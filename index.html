@@ -30,6 +30,7 @@ input[type=number]::-webkit-inner-spin-button{opacity:1}
 // ══════════════════════════════════════════════════
 const OR='#FF441F';
 const APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbzz_lNvo39Anp-vig4aqWNjTnJFwmu9VhilEOcvWHKqthE-iFMVqIuA6YzqEwygDkLI/exec';
+const SUP_PINS={'ana.farias@rappi.com':'1000','anthony.garcia@rappi.com':'1001','camilo.ospina@rappi.com':'1002','carlos.oliveira@rappi.com':'1003','fabian.ayala@rappi.com':'1004','gabriela.calderon@rappi.com':'1005','johan.vargas@rappi.com':'1006','juan.casallas@rappi.com':'1007','juan.marin@rappi.com':'1008','karol.olaya@rappi.com':'1009','laura.mora@rappi.com':'1010','manuela.moreno@rappi.com':'1011','oscar.pedraza@rappi.com':'1012','paola.blanco@rappi.com':'1013','paula.segura@rappi.com':'1014','rafael.carreno@rappi.com':'1015','tatiana.aros@rappi.com':'1016'};
 const PAISES=['Colombia','México','Costa Rica','Chile','Argentina','Perú','Uruguay','Ecuador'];
 const PORCS=[5,10,15,20,25,30,35,40,45,50];
 const FX={CO:1/4200,MX:1/17.2,AR:1/1100,PE:1/3.75,EC:1,UY:1/40,CL:1/960,CR:1/520,BR:1/5.5};
@@ -295,7 +296,16 @@ function buildLogin(){
     h('div',{style:{background:'#F0FDF4',border:'1px solid #86EFAC',borderRadius:8,padding:'5px 10px',display:'inline-block'}},h('span',{style:{fontSize:11,color:'#15803D',fontWeight:700}},'✓ HC actualizado · '+HC.filter(r=>r.pa!=='Churn'&&r.pa!=='Nuevo').length+' farmers activos · Base cero Abril 2026'))
   ]));
 
-  if(S.loginStep==='pwd'){
+  if(S.loginStep==='sup_pin'){
+    box.appendChild(h('div',{style:{textAlign:'center',marginBottom:14}},[h('div',{style:{fontSize:22,marginBottom:4}},'👔'),h('div',{style:{fontWeight:800,fontSize:15}},'Acceso Supervisor'),h('div',{style:{fontSize:12,color:'#64748B',marginTop:4}},S.supPinEmail||'')]));
+    const pi2=h('input',{type:'password',placeholder:'Ingresa tu clave numérica...',style:{...inp(S.supPinErr),marginBottom:8,letterSpacing:6,textAlign:'center'},onInput:e=>{S.supPin=e.target.value;S.supPinErr=false;},onKeydown:e=>{if(e.key==='Enter')chkSupPin();}});
+    pi2.value=S.supPin||'';box.appendChild(pi2);
+    if(S.supPinErr)box.appendChild(h('div',{style:{color:'#EF4444',fontSize:12,marginBottom:8,textAlign:'center',fontWeight:600}},'❌ Clave incorrecta.'));
+    const rb2=h('div',{style:{display:'flex',gap:8}});
+    rb2.appendChild(h('button',{style:{...btn('#F1F5F9','#64748B'),flex:1},onClick:()=>{S.loginStep=null;S.supPin='';S.supPinErr=false;R();}},'Cancelar'));
+    rb2.appendChild(h('button',{style:{...btn('#0D9488','#fff'),flex:2},onClick:chkSupPin},'Entrar →'));
+    box.appendChild(rb2);
+  } else if(S.loginStep==='pwd'){
     // Admin password
     box.appendChild(h('div',{style:{textAlign:'center',marginBottom:14}},[h('div',{style:{fontSize:22,marginBottom:4}},'🔑'),h('div',{style:{fontWeight:800,fontSize:15}},'Acceso Admin')]));
     const pi=h('input',{type:'password',placeholder:'Clave de acceso...',style:{...inp(S.pwdErr),marginBottom:8},onInput:e=>{S.adminPwd=e.target.value;S.pwdErr=false;},onKeydown:e=>{if(e.key==='Enter')chkPwd();}});
@@ -305,7 +315,7 @@ function buildLogin(){
     rb.appendChild(h('button',{style:{...btn('#F1F5F9','#64748B'),flex:1},onClick:()=>{S.loginStep=null;S.adminPwd='';R();}},'Cancelar'));
     rb.appendChild(h('button',{style:{...btn('#1E293B','#fff'),flex:2},onClick:chkPwd},'Entrar →'));
     box.appendChild(rb);
-  } else {
+  } else if(!S.loginStep) {
     // Email + roles
     const ei=h('input',{type:'text',placeholder:'Tu correo @rappi.com',style:{...inp(!!S.emailErr),marginBottom:8},onInput:e=>{S.loginEmail=e.target.value.toLowerCase().trim();S.emailErr='';},onKeydown:e=>{if(e.key==='Enter')doLogin('farmer');}});
     ei.value=S.loginEmail||'';box.appendChild(ei);
@@ -332,6 +342,10 @@ function doLogin(role){
   const full=raw.endsWith('@rappi.com')?raw:raw+'@rappi.com';
   const inHC=HC.find(r=>r.fa.toLowerCase()===full||r.l.toLowerCase()===full);
   if(!inHC){S.emailErr=full+' no está en el HC activo.';R();return;}
+  if(role==='supervisor'){
+    if(!SUP_PINS[full]){S.emailErr=full+' no tiene perfil de supervisor.';R();return;}
+    S.loginStep='sup_pin';S.supPinEmail=full;S.supPin='';S.supPinErr=false;R();return;
+  }
   S.role=role;S.user=full.replace('@rappi.com','');
   S.tab=role==='farmer'?'nueva':'equipo';S.supTab='equipo';S.adminTab='dash';
   S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''};
@@ -341,6 +355,19 @@ function chkPwd(){
   const v=(S.adminPwd||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
   if(v==='joaquin 0809'){S.role='admin';S.user='Sebastián';S.adminTab='dash';S.loginStep=null;S.adminPwd='';R();}
   else{S.pwdErr=true;S.adminPwd='';R();setTimeout(()=>{S.pwdErr=false;R();},2000);}
+}
+function chkSupPin(){
+  const pin=(S.supPin||'').trim();
+  const full=S.supPinEmail||'';
+  if(pin===SUP_PINS[full]){
+    S.role='supervisor';S.user=full.replace('@rappi.com','');
+    S.tab='equipo';S.supTab='equipo';
+    S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''};
+    S.vRes=null;S.fErr={};S.okMsg='';S.exc=false;S.excRazon='';S.selFarmer=null;
+    S.loginStep=null;S.supPin='';S.supPinErr=false;R();
+  } else {
+    S.supPinErr=true;S.supPin='';R();setTimeout(()=>{S.supPinErr=false;R();},2000);
+  }
 }
 
 // ══════════════════════════════════════════════════
