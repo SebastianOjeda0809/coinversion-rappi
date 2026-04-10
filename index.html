@@ -451,7 +451,7 @@ function buildFarmerForm(myHC){
   const bi=h('input',{type:'text',placeholder:'Solo números — Ej: 185789',style:inp(fe.brandId),onInput:e=>{S.form.brandId=e.target.value.replace(/\D/g,'');S.fErr.brandId=null;S.vRes=null;}});bi.value=f.brandId;
   grid.appendChild(fld('Brand ID *',bi,fe.brandId));
 
-  // ── El Tor badge ──
+  // ── LTor badge ──
   if(f.pais&&f.brandId&&f.brandId.length>2){
     const et=getElTor(f.pais,f.brandId);
     const etBox=h('div',{style:{gridColumn:'1/-1',padding:'10px 14px',borderRadius:10,border:'1.5px solid',display:'flex',alignItems:'center',gap:10,
@@ -463,7 +463,7 @@ function buildFarmerForm(myHC){
       info.appendChild(h('div',{style:{fontWeight:700,fontSize:13,color:'#92400E'}},et.n));
       const sub=h('div',{style:{fontSize:11,color:'#B45309',marginTop:2}});
       const typeIcon=et.t==='GOLDEN'?'🏆':et.t==='HIDDEN_GEM'?'💎':et.t==='TURBO'?'⚡':'📌';
-      sub.textContent=typeIcon+' '+et.t+' · El Tor Priorizada ✓';
+      sub.textContent=typeIcon+' '+et.t+' · LTor Priorizada ✓';
       info.appendChild(sub);
       etBox.appendChild(info);
       const pill=h('span',{style:{background:'#D97706',color:'#fff',fontWeight:700,fontSize:10,padding:'3px 10px',borderRadius:20}},'PRIORIZADA');
@@ -473,7 +473,7 @@ function buildFarmerForm(myHC){
       const info=h('div',{style:{flex:1}});
       info.appendChild(h('div',{style:{fontWeight:700,fontSize:13,color:'#64748B'}},et?et.n:'Brand ID '+f.brandId));
       const sub=h('div',{style:{fontSize:11,color:'#94A3B8',marginTop:2}});
-      sub.textContent=et?'Marca en El Tor pero no priorizada este período':'Marca no encontrada en El Tor este período';
+      sub.textContent=et?'Marca en LTor pero no priorizada este período':'Marca no encontrada en LTor este período';
       info.appendChild(sub);
       etBox.appendChild(info);
       const pill=h('span',{style:{background:'#94A3B8',color:'#fff',fontWeight:700,fontSize:10,padding:'3px 10px',borderRadius:20}},'NO PRIORIZADA');
