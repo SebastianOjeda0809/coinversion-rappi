@@ -347,7 +347,7 @@ function doLogin(role){
     if(!SUP_PINS[full]){S.emailErr=full+' no tiene perfil de supervisor.';R();return;}
     S.loginStep='sup_pin';S.supPinEmail=full;S.supPin='';S.supPinErr=false;R();return;
   }
-  S.role=role;S.user=full.replace('@rappi.com','');
+  S.role=role;S.user=full.toLowerCase().trim().replace('@rappi.com','');
   S.tab=role==='farmer'?'nueva':'equipo';S.supTab='equipo';S.adminTab='dash';
   S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''};
   S.vRes=null;S.fErr={};S.okMsg='';S.exc=false;S.excRazon='';S.selFarmer=null;S.etorWarned=false;R();
@@ -375,7 +375,7 @@ function chkSupPin(){
   const pin=(S.supPin||'').trim();
   const full=S.supPinEmail||'';
   if(pin===SUP_PINS[full]){
-    S.role='supervisor';S.user=full.replace('@rappi.com','');
+    S.role='supervisor';S.user=full.toLowerCase().trim().replace('@rappi.com','');
     S.tab='equipo';S.supTab='equipo';
     S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''};
     S.vRes=null;S.fErr={};S.okMsg='';S.exc=false;S.excRazon='';S.selFarmer=null;
@@ -389,8 +389,8 @@ function chkSupPin(){
 // FARMER
 // ══════════════════════════════════════════════════
 function buildFarmer(){
-  const myHC=HC.find(r=>r.fa===S.user+'@rappi.com');
-  const my=S.reqs.filter(r=>r.farmer===S.user);
+  const myHC=HC.find(r=>r.fa.toLowerCase()===(S.user+'@rappi.com').toLowerCase());
+  const my=S.reqs.filter(r=>(r.farmer||'').toLowerCase().replace('@rappi.com','')===S.user);
   const wrap=h('div',{style:{minHeight:'100vh',background:'#F3F4F6'}});
 
   // White topbar
@@ -557,7 +557,7 @@ function buildErrors(vr){
 }
 
 function normForm(){
-  const f=S.form,myHC=HC.find(r=>r.fa===S.user+'@rappi.com');
+  const f=S.form,myHC=HC.find(r=>r.fa.toLowerCase()===(S.user+'@rappi.com').toLowerCase());
   const lider=myHC?(myHC.l||'').replace('@rappi.com',''):'';
   return{...f,lider,montoCampana:parseFloat(f.montoCampana)||0,porcentaje:parseInt(f.porcentaje)||0,semanas:parseInt(f.semanas)||0};
 }
@@ -588,7 +588,7 @@ function doSubmit(){
     if(!S.excRazon.trim()){alert('Debes justificar la excepción.');return;}
     const vr=validate(req,[...HISTORICO,...S.reqs]);
     const nueva={id:uid(),createdAt:new Date().toISOString(),status:'pending_supervisor',
-      farmer:S.user,...req,tipo:req.tipoGestion||vr.tipo,
+      farmer:S.user+'@rappi.com',...req,tipo:req.tipoGestion||vr.tipo,
       coinversionAmount:calcCI(req.palanca,req.montoCampana,req.porcentaje,req.semanas),
       esExcepcion:true,excepcionRazon:S.excRazon.trim()};
     saveReqs([...S.reqs,nueva]);
@@ -612,7 +612,7 @@ function doSubmit(){
   const tipo=req.tipoGestion||S.vRes.tipo;
   const nueva={
     id:uid(),createdAt:new Date().toISOString(),status:'pending',
-    farmer:S.user,...req,tipo,
+    farmer:S.user+'@rappi.com',...req,tipo,
     coinversionAmount:calcCI(req.palanca,req.montoCampana,req.porcentaje,req.semanas)
   };
   saveReqs([...S.reqs,nueva]);
@@ -840,7 +840,7 @@ function aprobarUno(id){
 }
 
 function buildAdmin(){
-  const pend=S.reqs.filter(r=>r.status==='pending'||r.status==='pending_admin');
+  const pend=S.reqs.filter(r=>r.status==='pending'||r.status==='pending_admin');const stuck=S.reqs.filter(r=>r.status==='pending_supervisor');
   const appr=S.reqs.filter(r=>r.status==='approved');
   const comm=appr.reduce((s,r)=>s+(r.coinversionAmount||0),0);
   const pendAmt=pend.reduce((s,r)=>s+(r.coinversionAmount||0),0);
@@ -849,6 +849,7 @@ function buildAdmin(){
   const wrap=h('div',{style:{minHeight:'100vh',background:'#F3F4F6'}});
   wrap.appendChild(topBar('#111827','🚀 Co-Inversión Rappi','ADMIN','👤 '+S.user));
   wrap.appendChild(tabBar('#1F2937',[['dash','📊 Dashboard'],['pend','⏳ Pendientes'+(pend.length?' ('+pend.length+')':'')],['hist','📋 Historial'],['buscar','🔍 Buscar marca'],['hc','👥 Cobertura HC'],['bdg','💰 Budget']],S.adminTab,k=>{S.adminTab=k;R();}));
+  if(stuck.length>0){var sb=h('div',{style:{background:'#FEF2F2',border:'2px solid #F87171',borderRadius:10,padding:'10px 14px',margin:'12px 20px 0',maxWidth:1100,display:'flex',alignItems:'center',gap:10}});sb.appendChild(h('span',{style:{fontSize:20}},'⚠️'));sb.appendChild(h('div',{style:{flex:1,fontSize:13,color:'#991B1B'}},[h('strong',{},stuck.length+' solicitud(es) atascadas en supervisor. '),'No aparecerán en los CSVs hasta que el supervisor apruebe la excepción.']));wrap.appendChild(sb);}
 
   const ct=h('div',{style:{padding:20,maxWidth:1100,margin:'0 auto'}});
   const activos=HC.filter(r=>r.pa!=='Churn'&&r.pa!=='Nuevo');
