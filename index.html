@@ -54,6 +54,8 @@ const gg=k=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}cat
 async function apiGet(){try{const r=await fetch(APPS_SCRIPT_URL+"?t="+Date.now());const d=await r.json();if(d.ok){if(d.reqs)sg("ci_reqs_abr26",d.reqs);if(d.budget)sg("ci_budget",d.budget);return d;}}catch(e){console.warn("API read error",e);}return null;}
 async function apiSaveReqs(reqs){try{sg("ci_reqs_abr26",reqs);let remote=[];try{const rr=await fetch(APPS_SCRIPT_URL+"?t="+Date.now());const dd=await rr.json();if(dd&&dd.ok&&Array.isArray(dd.reqs))remote=dd.reqs;}catch(e){console.warn("apiSaveReqs: no se pudo leer remoto, usando solo local",e);}const byId=new Map();remote.forEach(x=>{if(x&&x.id)byId.set(x.id,x);});reqs.forEach(x=>{if(x&&x.id)byId.set(x.id,x);});const merged=Array.from(byId.values());S.reqs=merged;sg("ci_reqs_abr26",merged);await fetch(APPS_SCRIPT_URL,{method:"POST",mode:"no-cors",body:JSON.stringify({action:"saveReqs",reqs:merged})});}catch(e){console.warn("API save error",e);}}
 async function apiSaveBudget(budget){try{sg("ci_budget",budget);fetch(APPS_SCRIPT_URL,{method:"POST",mode:"no-cors",body:JSON.stringify({action:"saveBudget",budget:budget})});}catch(e){console.warn("API save error",e);}}
+async function apiUpsertReq(req){try{const body=JSON.stringify({action:"upsertReq",req:req,actor:(S&&S.user)||""});const r=await fetch(APPS_SCRIPT_URL,{method:"POST",mode:"cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:body});const d=await r.json();if(!d||!d.ok){console.warn("upsertReq fallo",d);return {ok:false,error:(d&&d.error)||"unknown"};}return d;}catch(e){console.warn("upsertReq error",e);return {ok:false,error:e.toString()};}}
+async function apiDeleteReq(id){try{const body=JSON.stringify({action:"deleteReq",id:id,actor:(S&&S.user)||""});const r=await fetch(APPS_SCRIPT_URL,{method:"POST",mode:"cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:body});return await r.json();}catch(e){console.warn("deleteReq error",e);return {ok:false,error:e.toString()};}}
 const csvDL=(rows,fn)=>{const b=new Blob([rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=fn;a.click()};
 function makeCSV(reqs){
   const h='country,brand_id,level_1,level_2,level_3,level_4,level_5,level_6,level_7,level_8,level_9,level_10,level_11,level_12,action';
@@ -591,8 +593,9 @@ function doSubmit(){
       farmer:S.user+'@rappi.com',...req,tipo:req.tipoGestion||vr.tipo,
       coinversionAmount:calcCI(req.palanca,req.montoCampana,req.porcentaje,req.semanas),
       esExcepcion:true,excepcionRazon:S.excRazon.trim()};
-    saveReqs([...S.reqs,nueva]);
-    S.okMsg='✅ Excepción enviada al supervisor.';
+    S.reqs=[...S.reqs,nueva];sg("ci_reqs_abr26",S.reqs);
+    apiUpsertReq(nueva).then(function(res){if(!res.ok)S.okMsg='⚠️ Guardado local; revisa conexión ('+(res.error||'?')+')';else S.okMsg='✅ Excepción enviada al supervisor.';render();});
+    S.okMsg='⏳ Enviando al supervisor...';
     S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''};
     S.vRes=null;S.fErr={};S.exc=false;S.excRazon='';S.tab='mis';
     render();
@@ -615,8 +618,9 @@ function doSubmit(){
     farmer:S.user+'@rappi.com',...req,tipo,
     coinversionAmount:calcCI(req.palanca,req.montoCampana,req.porcentaje,req.semanas)
   };
-  saveReqs([...S.reqs,nueva]);
-  S.okMsg='✅ Solicitud enviada. Pendiente de aprobación.';
+  S.reqs=[...S.reqs,nueva];sg("ci_reqs_abr26",S.reqs);
+  apiUpsertReq(nueva).then(function(res){if(!res.ok)S.okMsg='⚠️ Guardado local; revisa conexión ('+(res.error||'?')+')';else S.okMsg='✅ Solicitud enviada. Pendiente de aprobación.';render();});
+  S.okMsg='⏳ Enviando...';
   S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''};
   S.vRes=null;S.fErr={};S.tab='mis';
   render();
@@ -757,8 +761,8 @@ function buildSupervisor(){
         info.appendChild(h('div',{style:{fontSize:13,color:'#4B5563'}},'🌎 '+r.pais+' · 👤 '+r.farmer+' · 📅 '+fD(r.fechaInicio)+' · 💵 '+fN(r.montoCampana)+' · CI: '+fN(r.coinversionAmount)));
         row.appendChild(info);
         const ba=h('div',{style:{display:'flex',flexDirection:'column',gap:8,minWidth:130}});
-        ba.appendChild(h('button',{style:{...btn('#0F766E','#fff'),padding:'9px 0',width:'100%',textAlign:'center'},onClick:()=>{saveReqs(S.reqs.map(x=>x.id===r.id?{...x,status:'pending_admin'}:x));R();}},'✓ Aprobar → Admin'));
-        ba.appendChild(h('button',{style:{...btn('#FEE2E2','#B91C1C'),padding:'9px 0',width:'100%',textAlign:'center'},onClick:()=>{saveReqs(S.reqs.map(x=>x.id===r.id?{...x,status:'rejected',rejectionReason:'Rechazado por supervisor'}:x));R();}},'✗ Rechazar'));
+        ba.appendChild(h('button',{style:{...btn('#0F766E','#fff'),padding:'9px 0',width:'100%',textAlign:'center'},onClick:()=>{var upd=Object.assign({},r,{status:'pending_admin'});S.reqs=S.reqs.map(x=>x.id===r.id?upd:x);sg('ci_reqs_abr26',S.reqs);apiUpsertReq(upd).then(render);R();}},'✓ Aprobar → Admin'));
+        ba.appendChild(h('button',{style:{...btn('#FEE2E2','#B91C1C'),padding:'9px 0',width:'100%',textAlign:'center'},onClick:()=>{var upd=Object.assign({},r,{status:'rejected',rejectionReason:'Rechazado por supervisor'});S.reqs=S.reqs.map(x=>x.id===r.id?upd:x);sg('ci_reqs_abr26',S.reqs);apiUpsertReq(upd).then(render);R();}},'✗ Rechazar'));
         row.appendChild(ba);box.appendChild(row);list.appendChild(box);
       });ct.appendChild(list);}
   }
