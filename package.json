@@ -1,0 +1,16 @@
+{
+  "name": "coinversion-rappi",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SPA de co-inversión Rappi (single index.html).",
+  "type": "module",
+  "scripts": {
+    "test": "vitest",
+    "test:run": "vitest --run",
+    "test:coverage": "vitest --run --coverage"
+  },
+  "devDependencies": {
+    "happy-dom": "^14.12.0",
+    "vitest": "^1.6.0"
+  }
+}
