@@ -895,7 +895,7 @@ function buildAdmin(){
       var pendFT=pend.filter(function(r){return r.palanca==='free_trial';});
 
       // Helper: renders a group of requests with its approve-all button
-      function renderGrupo(titulo,color,icono,grupo,palanca){
+      var renderGrupo=function(titulo,color,icono,grupo,palanca){
         if(grupo.length===0)return null;
         var wrap=h('div',{style:{marginBottom:24}});
 
@@ -970,7 +970,7 @@ function buildAdmin(){
         });
         wrap.appendChild(list);
         return wrap;
-      }
+      };
 
       var gPct=renderGrupo('Descuentos por porcentaje','#FF441F','📊',pendPct,'porcentaje');
       var gFT=renderGrupo('Free Trial','#0D9488','🎁',pendFT,'free_trial');
