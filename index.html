@@ -126,7 +126,7 @@ function makeFTCSVs(reqs){
   return files;
 }
 function makeHistoricoCSV(reqs,desde,hasta){
-  const HDR='country,farmer,lider,palanca,tipo_gestion,detalle,fecha_aprobacion';
+  const HDR='brand_id,country,farmer,lider,palanca,tipo_gestion,detalle,monto_campana,rappi_aporta,fecha_solicitud,fecha_aprobacion';
   var rows=[HDR];
   var aprobadas=reqs.filter(function(r){return r.status==='approved'&&r.reviewedAt;});
   if(desde) aprobadas=aprobadas.filter(function(r){return r.reviewedAt.slice(0,10)>=desde;});
@@ -135,7 +135,21 @@ function makeHistoricoCSV(reqs,desde,hasta){
   aprobadas.forEach(function(r){
     var c=getCC(r.pais);
     var detalle=r.palanca==='porcentaje'?(r.porcentaje+'% descuento'):(r.semanas+' semana(s) gratis');
-    rows.push([c,r.farmer||'',r.lider||'',r.palanca==='porcentaje'?'Porcentaje':'Free Trial',r.tipoGestion||r.tipo||'',detalle,(r.reviewedAt||'').slice(0,10)].join(','));
+    var fechaSol=(r.fechaInicio||'').slice(0,10)||'-';
+    var fechaAprob=(r.reviewedAt||'').slice(0,10);
+    rows.push([
+      r.brandId||'',
+      c,
+      r.farmer||'',
+      r.lider||'',
+      r.palanca==='porcentaje'?'Porcentaje':'Free Trial',
+      r.tipoGestion||r.tipo||'',
+      detalle,
+      r.montoCampana||0,
+      r.coinversionAmount||0,
+      fechaSol,
+      fechaAprob
+    ].join(','));
   });
   return {csv:rows.join('\n'), count:aprobadas.length};
 }
