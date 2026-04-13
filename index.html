@@ -60,7 +60,7 @@ const csvDL=(rows,fn)=>{const b=new Blob([rows.join('\n')],{type:'text/csv'});co
 function makeCSV(reqs){
   const h='country,brand_id,level_1,level_2,level_3,level_4,level_5,level_6,level_7,level_8,level_9,level_10,level_11,level_12,action';
   const rows=[h];
-  reqs.forEach(r=>{if(r.palanca==='porcentaje'){const c=getCC(r.pais),b=StringStringString(r.brandId||'').replace(/\D/g,'');if(c&&b)rows.push([c,b,parseInt(r.porcentaje)||0,0,0,0,0,0,0,0,0,0,0,0,'UPDATE'].join(','));}});
+  reqs.forEach(r=>{if(r.palanca==='porcentaje'){const c=getCC(r.pais),b=String(r.brandId||'').replace(/\D/g,'');if(c&&b)rows.push([c,b,parseInt(r.porcentaje)||0,0,0,0,0,0,0,0,0,0,0,0,'UPDATE'].join(','));}});
   return rows;
 }
 
@@ -98,7 +98,7 @@ function makeDescuentoCSVs(reqs){
     var chunk=items.slice(i,i+20);
     var rows=[HDR];
     chunk.forEach(function(r){
-      var c=getCC(r.pais), b=StringStringString(r.brandId||'').replace(/\D/g,'');
+      var c=getCC(r.pais), b=String(r.brandId||'').replace(/\D/g,'');
       if(c&&b) rows.push([c,b,parseInt(r.porcentaje)||0,0,0,0,0,0,0,0,0,0,0,0,'UPDATE'].join(','));
     });
     if(rows.length>1) files.push(rows.join('\n'));
@@ -116,7 +116,7 @@ function makeFTCSVs(reqs){
     var chunk=items.slice(i,i+20);
     var rows=[HDR];
     chunk.forEach(function(r){
-      var c=getCC(r.pais), b=StringStringString(r.brandId||'').replace(/\D/g,'');
+      var c=getCC(r.pais), b=String(r.brandId||'').replace(/\D/g,'');
       var strategy=parseInt(r.semanas)===1?'co_invest_rxa_1_3':'co_invest_rxa_2_2';
       if(c&&b) rows.push([c,b,'-',strategy,'update'].join(','));
     });
