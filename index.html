@@ -797,6 +797,7 @@ function aprobarGrupoCSV(palanca){
     return ap?ap:r;
   });
   saveReqs(nuevosReqs);
+  aprobadas.forEach(function(a){apiUpsertReq(a);});
   var fn=ahora.slice(0,10);
   if(palanca==='porcentaje'){
     var files=makeDescuentoCSVs(aprobadas);
@@ -825,6 +826,7 @@ function aprobarTanda(){
     return ap?ap:r;
   });
   saveReqs(nuevosReqs);
+  aprobadas.forEach(function(a){apiUpsertReq(a);});
   // Generar CSVs
   var fn=ahora.slice(0,10);
   var dFiles=makeDescuentoCSVs(aprobadas);
@@ -883,6 +885,22 @@ function buildAdmin(){
     const bi=h('div',{style:{display:'flex',gap:14,marginTop:8,fontSize:12,flexWrap:'wrap',color:'#6B7280'}});
     ['Aprobado: '+fN(comm)+' ('+pct.toFixed(1)+'%)','En revisión: '+fN(pendAmt),'Disponible: '+fN((S.budget.total||0)-comm)].forEach(t=>bi.appendChild(h('span',{},t)));
     bc.appendChild(bi);ct.appendChild(bc);
+    // Botón de re-sync si hay pendientes que parecen ya aprobadas
+    if(pend.length>0){
+      var syncBox=h('div',{style:{background:'#FEF3C7',border:'2px solid #F59E0B',borderRadius:10,padding:'12px 16px',marginBottom:14,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}});
+      syncBox.appendChild(h('div',{style:{flex:1,fontSize:13,color:'#92400E'}},[h('strong',{},'⚠️ ¿Ya aprobaste estas solicitudes antes? '),h('span',{},'Si el backend las trae como pendientes, usa este botón para re-aprobar y sincronizar todo.')]));
+      syncBox.appendChild(h('button',{style:{...btn('#F59E0B','#fff'),whiteSpace:'nowrap'},onClick:function(){
+        if(!confirm('¿Re-aprobar todas las '+pend.length+' pendientes y sincronizar al backend?'))return;
+        var ahora=new Date().toISOString();
+        var aprobadas=pend.map(function(r){return Object.assign({},r,{status:'approved',reviewedAt:ahora});});
+        var nuevos=S.reqs.map(function(r){var a=aprobadas.find(function(x){return x.id===r.id;});return a?a:r;});
+        saveReqs(nuevos);
+        aprobadas.forEach(function(a){apiUpsertReq(a);});
+        alert('Listo. Recarga la página en 10 segundos.');
+        R();
+      }},'🔄 Re-aprobar y sincronizar ('+pend.length+')'));
+      ct.appendChild(syncBox);
+    }
     if(S.reqs.length>0){const rc=h('div',{style:card()});rc.appendChild(h('div',{style:{fontWeight:700,fontSize:13,marginBottom:10}},'🕐 Últimas 10 solicitudes'));rc.appendChild(buildTable(['Estado','Brand','País','Farmer','Palanca','Monto','Co-inv.','Fecha'],[...S.reqs].reverse().slice(0,10).map(r=>[badge(r.status),r.brandId,r.pais,(r.farmer||'').replace('@rappi.com',''),r.palanca==='free_trial'?'FT':'%',fN(r.montoCampana),Object.assign(h('span',{style:{color:OR,fontWeight:700}}),{textContent:fN(r.coinversionAmount)}),fD(r.fechaInicio)])));ct.appendChild(rc);}
   }
 
