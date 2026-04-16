@@ -666,7 +666,7 @@ function buildSupervisor(){
   // Normalizar a SIN @rappi.com para que coincida con r.farmer en S.reqs
   const myEmails=new Set(myTeam.map(r=>r.fa.toLowerCase().replace('@rappi.com','')));
   const normFarmer=function(f){return (f||'').toLowerCase().replace('@rappi.com','');};
-  const excPend=S.reqs.filter(r=>r.status==='pending_supervisor'&&(r.esExcepcion||r.exc)&&myEmails.has(normFarmer(r.farmer)));
+  const excPend=S.reqs.filter(r=>r.status==='pending_supervisor'&&myEmails.has(normFarmer(r.farmer)));
   const teamReqs=S.reqs.filter(r=>myEmails.has(normFarmer(r.farmer)));
 
   const wrap=h('div',{style:{minHeight:'100vh',background:'#F3F4F6'}});
