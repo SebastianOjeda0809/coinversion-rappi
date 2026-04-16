@@ -767,7 +767,7 @@ function buildSupervisor(){
         const row=h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:14,flexWrap:'wrap'}});
         const info=h('div',{style:{flex:1}});
         const hdr2=h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:8}});hdr2.appendChild(h('span',{style:{fontWeight:800,fontSize:15}},r.brandId));hdr2.appendChild(h('span',{style:pill('#FEF9C3','#713F12')},'EXCEPCIÓN'));info.appendChild(hdr2);
-        if(r.excepcionRazon)info.appendChild(h('div',{style:{background:'#FFFBEB',border:'1px solid #FDE047',borderRadius:8,padding:'8px 12px',marginBottom:8,fontSize:13,color:'#78350F'}},'Motivo: '+r.excepcionRazon));
+        var _razon=r.excepcionRazon||r.excRazon||''; if(_razon)info.appendChild(h('div',{style:{background:'#FFFBEB',border:'1px solid #FDE047',borderRadius:8,padding:'8px 12px',marginBottom:8,fontSize:13,color:'#78350F'}},'⚡ Motivo: '+_razon));
         info.appendChild(h('div',{style:{fontSize:13,color:'#4B5563'}},r.pais+' · '+r.farmer+' · '+fD(r.fechaInicio)+' · '+fN(r.montoCampana)+' · CI: '+fN(r.coinversionAmount)));
         row.appendChild(info);
         const ba=h('div',{style:{display:'flex',flexDirection:'column',gap:8,minWidth:130}});
@@ -950,8 +950,8 @@ function buildAdmin(){
           hdr2.appendChild(tipoBadge(r.tipo));
           if(r.esExcepcion)hdr2.appendChild(h('span',{style:pill('#FEF9C3','#713F12')},'EXCEPCIÓN'));
           info.appendChild(hdr2);
-          if(r.esExcepcion&&r.excepcionRazon)
-            info.appendChild(h('div',{style:{background:'#FEF9C3',border:'1px solid #FDE047',borderRadius:'8px',padding:'8px 12px',marginBottom:8,fontSize:13,color:'#78350F'}},'⚡ '+r.excepcionRazon));
+          var _razon2=r.excepcionRazon||r.excRazon||''; if((r.esExcepcion||r.exc)&&_razon2)
+            info.appendChild(h('div',{style:{background:'#FEF9C3',border:'1px solid #FDE047',borderRadius:'8px',padding:'8px 12px',marginBottom:8,fontSize:13,color:'#78350F'}},'⚡ '+_razon2));
           // Details grid
           var det=h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'4px 14px',fontSize:13,color:'#4B5563',marginBottom:8}});
           ['🌎 '+r.pais,'👤 '+r.farmer,'👔 '+(r.lider||''),'📅 '+fD(r.fechaInicio),
@@ -977,7 +977,7 @@ function buildAdmin(){
           if(S.rejectId!==r.id){
             var ba=h('div',{style:{display:'flex',flexDirection:'column',gap:6,minWidth:110}});
             ba.appendChild(h('button',{style:{...btn('#10B981','#fff'),padding:'9px 0',width:'100%',textAlign:'center'},
-              onClick:function(){var id=r.id;saveReqs(S.reqs.map(function(x){return x.id===id?Object.assign({},x,{status:'approved',reviewedAt:new Date().toISOString()}):x;}));render();}},'✓ Aprobar'));
+              onClick:function(){var id=r.id;var ahora2=new Date().toISOString();var aprobada2=Object.assign({},r,{status:'approved',reviewedAt:ahora2});saveReqs(S.reqs.map(function(x){return x.id===id?aprobada2:x;}));apiUpsertReq(aprobada2);render();}},'✓ Aprobar'));
             ba.appendChild(h('button',{style:{...btn('#059669','#fff',{fontSize:11}),padding:'9px 0',width:'100%',textAlign:'center'},
               onClick:function(){aprobarUno(r.id);}},'✓ Aprobar+CSV'));
             ba.appendChild(h('button',{style:{...btn('#FEE2E2','#B91C1C'),padding:'9px 0',width:'100%',textAlign:'center'},
