@@ -602,7 +602,7 @@ function doSubmit(){
     const nueva={id:uid(),createdAt:new Date().toISOString(),status:'pending_supervisor',
       farmer:S.user+'@rappi.com',...req,tipo:req.tipoGestion||vr.tipo,
       coinversionAmount:calcCI(req.palanca,req.montoCampana,req.porcentaje,req.semanas),
-      esExcepcion:true,excepcionRazon:S.excRazon.trim()};
+      esExcepcion:true,exc:true,excepcionRazon:S.excRazon.trim()};
     S.reqs=[...S.reqs,nueva];sg("ci_reqs_abr26",S.reqs);
     apiUpsertReq(nueva).then(function(res){if(!res.ok)S.okMsg='Guardado local; revisa conexión ('+(res.error||'?')+')';else S.okMsg='Excepción enviada al supervisor.';render();});
     S.okMsg='Enviando al supervisor...';
@@ -666,7 +666,7 @@ function buildSupervisor(){
   // Normalizar a SIN @rappi.com para que coincida con r.farmer en S.reqs
   const myEmails=new Set(myTeam.map(r=>r.fa.toLowerCase().replace('@rappi.com','')));
   const normFarmer=function(f){return (f||'').toLowerCase().replace('@rappi.com','');};
-  const excPend=S.reqs.filter(r=>r.status==='pending_supervisor'&&r.esExcepcion&&myEmails.has(normFarmer(r.farmer)));
+  const excPend=S.reqs.filter(r=>r.status==='pending_supervisor'&&(r.esExcepcion||r.exc)&&myEmails.has(normFarmer(r.farmer)));
   const teamReqs=S.reqs.filter(r=>myEmails.has(normFarmer(r.farmer)));
 
   const wrap=h('div',{style:{minHeight:'100vh',background:'#F3F4F6'}});
