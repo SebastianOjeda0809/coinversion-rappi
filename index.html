@@ -43,7 +43,8 @@ const HC=[{"fa":"andres.reyes@rappi.com","pa":"MX","rg":"CDMX","ro":"SR","l":"an
 // ══════════════════════════════════════════════════
 const uid=()=>Math.random().toString(36).substr(2,8).toUpperCase();
 const fN=n=>(n||0).toLocaleString('es-CO');
-const fD=d=>d?new Date(d+'T12:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'}):'-';
+const fD=function(d){if(!d||d===''||d==='0001-01-01'||d==='Invalid Date')return '—';try{var dt=new Date(d.length<=10?d+'T12:00:00':d);if(isNaN(dt.getTime()))return '—';return dt.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'});}catch(e){return '—';}};
+const fDsol=function(r){var fi=fDsol(r);if(fi!=='—')return fi;var ca=fD((r.createdAt||'').slice(0,10));return ca!=='—'?'📅'+ca:'—';};
 const mA=d=>{const t=new Date(d+'T12:00:00');return t.getFullYear()+'-'+t.getMonth()};
 const mL=d=>new Date(d+'T12:00:00').toLocaleDateString('es-CO',{month:'long',year:'numeric'});
 const calcCI=(pal,mto,pct,sem)=>{if(!mto)return 0;if(pal==='porcentaje')return mto*((pct||0)/100);if(pal==='free_trial')return mto*((sem||1)/4);return 0;};
@@ -513,8 +514,7 @@ function buildFarmerForm(myHC){
   const mi=h('input',{type:'number',placeholder:'Ej: 1000000',style:inp(fe.montoCampana),onInput:e=>{S.form.montoCampana=e.target.value;S.fErr.montoCampana=null;S.vRes=null;}});mi.value=f.montoCampana;
   grid.appendChild(fld('Monto campaña (moneda local) *',mi,fe.montoCampana));
   // Fecha
-  const fi=h('input',{type:'date',style:inp(fe.fechaInicio),onChange:e=>{S.form.fechaInicio=e.target.value;S.fErr.fechaInicio=null;S.vRes=null;}});fi.value=f.fechaInicio;
-  grid.appendChild(fld('Fecha de inicio *',fi,fe.fechaInicio));
+  // fechaInicio se asigna automáticamente al enviar
 
   card2.appendChild(grid);
 
@@ -584,7 +584,6 @@ function doValidar(){
   if(!f.palanca)fe.palanca='Requerido';
   if(!f.tipoGestion)fe.tipoGestion='Requerido';
   if(!f.montoCampana||parseFloat(f.montoCampana)<=0)fe.montoCampana='Monto requerido';
-  if(!f.fechaInicio)fe.fechaInicio='Requerido';
   if(f.palanca==='porcentaje'&&!f.porcentaje)fe.porcentaje='Selecciona %';
   if(f.palanca==='free_trial'&&!f.semanas)fe.semanas='Selecciona semanas';
   if(Object.keys(fe).length>0){S.fErr=fe;S.vRes=null;render();return false;}
@@ -601,8 +600,9 @@ function doSubmit(){
   if(S.exc){
     if(!S.excRazon.trim()){alert('Debes justificar la excepción.');return;}
     const vr=validate(req,[...HISTORICO,...S.reqs]);
+    const hoyEx=new Date().toISOString().slice(0,10);
     const nueva={id:uid(),createdAt:new Date().toISOString(),status:'pending_supervisor',
-      farmer:S.user,...req,tipo:req.tipoGestion||vr.tipo,
+      farmer:S.user,...req,tipo:req.tipoGestion||vr.tipo,fechaInicio:req.fechaInicio||hoyEx,
       coinversionAmount:calcCI(req.palanca,req.montoCampana,req.porcentaje,req.semanas),
       esExcepcion:true,exc:true,excepcionRazon:S.excRazon.trim()};
     S.reqs=[...S.reqs,nueva];sg("ci_reqs_abr26",S.reqs);
@@ -625,9 +625,10 @@ function doSubmit(){
   if(S.vRes.allErrors.length>0){render();return;}
 
   const tipo=req.tipoGestion||S.vRes.tipo;
+  const hoy=new Date().toISOString().slice(0,10);
   const nueva={
     id:uid(),createdAt:new Date().toISOString(),status:'pending',
-    farmer:S.user,...req,tipo,
+    farmer:S.user,...req,tipo,fechaInicio:req.fechaInicio||hoy,
     coinversionAmount:calcCI(req.palanca,req.montoCampana,req.porcentaje,req.semanas)
   };
   S.reqs=[...S.reqs,nueva];sg("ci_reqs_abr26",S.reqs);
@@ -654,7 +655,7 @@ function buildMisCampanas(my){
     card2.appendChild(emp);
   } else {
     card2.appendChild(buildTable(['Estado','Brand ID','País','Palanca','Det.','Monto','Rappi aporta','Tipo','Fecha'],
-      [...my].reverse().map(r=>[badge(r.status),r.brandId,r.pais,r.palanca==='free_trial'?'FT':'%',r.palanca==='free_trial'?r.semanas+'s':r.porcentaje+'%',fN(r.montoCampana),Object.assign(h('span',{style:{color:OR,fontWeight:700}}),{textContent:fN(r.coinversionAmount)}),tipoBadge(r.tipo),fD(r.fechaInicio)])));
+      [...my].reverse().map(r=>[badge(r.status),r.brandId,r.pais,r.palanca==='free_trial'?'FT':'%',r.palanca==='free_trial'?r.semanas+'s':r.porcentaje+'%',fN(r.montoCampana),Object.assign(h('span',{style:{color:OR,fontWeight:700}}),{textContent:fN(r.coinversionAmount)}),tipoBadge(r.tipo),fDsol(r)])));
   }
   w.appendChild(card2);return w;
 }
@@ -725,7 +726,7 @@ function buildSupervisor(){
         row.appendChild(h('div',{style:{fontSize:12,color:'#374151'}},fN(r.montoCampana)));
         const ci=h('div',{style:{fontSize:12,fontWeight:700,color:OR}},fN(r.coinversionAmount));
         row.appendChild(ci);
-        row.appendChild(h('div',{style:{fontSize:11,color:'#6B7280'}},fD(r.fechaInicio)));
+        row.appendChild(h('div',{style:{fontSize:11,color:'#6B7280'}},fDsol(r)));
         row.appendChild(badge(r.status));
         pbl.appendChild(row);
       });
@@ -797,7 +798,7 @@ function buildSupervisor(){
           rrow.appendChild(h('div',{style:{fontSize:12,color:'#374151'}},r.palanca==='free_trial'?'🎁 FT '+r.semanas+'s':'📊 '+r.porcentaje+'%'));
           rrow.appendChild(h('div',{style:{fontSize:12,color:'#374151'}},fN(r.montoCampana)));
           rrow.appendChild(h('div',{style:{fontSize:12,fontWeight:700,color:OR}},fN(r.coinversionAmount)));
-          rrow.appendChild(h('div',{style:{fontSize:11,color:'#6B7280'}},'Sol: '+fD(r.fechaInicio)));
+          rrow.appendChild(h('div',{style:{fontSize:11,color:'#6B7280'}},'Sol: '+fDsol(r)));
           rrow.appendChild(h('div',{style:{fontSize:11,color:r.reviewedAt?'#059669':'#9CA3AF'}},r.reviewedAt?'Aprob: '+fD(r.reviewedAt):'—'));
           det.appendChild(rrow);
         });
@@ -839,7 +840,7 @@ function buildSupervisor(){
 
         // Info del farmer
         const bhmeta=h('div',{style:{display:'flex',gap:16,flexWrap:'wrap'}});
-        [['👤',( r.farmer||'').replace('@rappi.com','')],['🌎',r.pais],['📅',fD(r.fechaInicio)],['💵',fN(r.montoCampana)],['📊',r.palanca==='free_trial'?'Free Trial '+r.semanas+'s':r.porcentaje+'% desc.']].forEach(function(it){
+        [['👤',( r.farmer||'').replace('@rappi.com','')],['🌎',r.pais],['📅',fDsol(r)],['💵',fN(r.montoCampana)],['📊',r.palanca==='free_trial'?'Free Trial '+r.semanas+'s':r.porcentaje+'% desc.']].forEach(function(it){
           const m=h('div',{style:{fontSize:12,color:'#4B5563'}});
           m.appendChild(h('span',{},it[0]+' '));
           m.appendChild(h('span',{style:{fontWeight:600}},it[1]));
@@ -1018,7 +1019,7 @@ function buildAdmin(){
       }},'🔄 Re-aprobar y sincronizar ('+pend.length+')'));
       ct.appendChild(syncBox);
     }
-    if(S.reqs.length>0){const rc=h('div',{style:card()});rc.appendChild(h('div',{style:{fontWeight:700,fontSize:13,marginBottom:10}},'🕐 Últimas 10 solicitudes'));rc.appendChild(buildTable(['Estado','Brand','País','Farmer','Palanca','Monto','Co-inv.','Fecha'],[...S.reqs].reverse().slice(0,10).map(r=>[badge(r.status),r.brandId,r.pais,nE(r.farmer),r.palanca==='free_trial'?'FT':'%',fN(r.montoCampana),Object.assign(h('span',{style:{color:OR,fontWeight:700}}),{textContent:fN(r.coinversionAmount)}),fD(r.fechaInicio)])));ct.appendChild(rc);}
+    if(S.reqs.length>0){const rc=h('div',{style:card()});rc.appendChild(h('div',{style:{fontWeight:700,fontSize:13,marginBottom:10}},'🕐 Últimas 10 solicitudes'));rc.appendChild(buildTable(['Estado','Brand','País','Farmer','Palanca','Monto','Co-inv.','Fecha'],[...S.reqs].reverse().slice(0,10).map(r=>[badge(r.status),r.brandId,r.pais,nE(r.farmer),r.palanca==='free_trial'?'FT':'%',fN(r.montoCampana),Object.assign(h('span',{style:{color:OR,fontWeight:700}}),{textContent:fN(r.coinversionAmount)}),fDsol(r)])));ct.appendChild(rc);}
   }
 
   if(S.adminTab==='pend'){
@@ -1071,7 +1072,7 @@ function buildAdmin(){
             info.appendChild(h('div',{style:{background:'#FEF9C3',border:'1px solid #FDE047',borderRadius:'8px',padding:'8px 12px',marginBottom:8,fontSize:13,color:'#78350F'}},'⚡ '+_razon2));
           // Details grid
           var det=h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'4px 14px',fontSize:13,color:'#4B5563',marginBottom:8}});
-          ['🌎 '+r.pais,'👤 '+r.farmer,'👔 '+(r.lider||''),'📅 '+fD(r.fechaInicio),
+          ['🌎 '+r.pais,'👤 '+r.farmer,'👔 '+(r.lider||''),'📅 '+fDsol(r),
            '🎯 '+(r.palanca==='free_trial'?'Free Trial '+r.semanas+' sem.':r.porcentaje+'% desc.'),
            '💵 '+fN(r.montoCampana),'📤 Rappi: '+fN(ci),'📊 '+pctB+'% budget']
           .forEach(function(t){det.appendChild(h('span',{},t));});
@@ -1138,7 +1139,7 @@ function buildAdmin(){
           fN(r.montoCampana),
           Object.assign(h('span',{style:{color:'#10B981',fontWeight:700}}),{textContent:fN(r.coinversionAmount)}),
           tipoBadge(r.tipo),
-          fD(r.fechaInicio),
+          fDsol(r),
           r.reviewedAt?h('span',{style:{fontSize:11,color:'#374151',fontWeight:600}},r.reviewedAt.slice(0,10)):h('span',{style:{color:'#9CA3AF'}},'-')
         ])
       )));
@@ -1190,7 +1191,7 @@ function buildAdmin(){
         r.palanca==='free_trial'?r.semanas+'s':r.porcentaje+'%',
         fN(r.montoCampana),
         Object.assign(h('span',{style:{color:OR,fontWeight:700}}),{textContent:fN(r.coinversionAmount)}),
-        tipoBadge(r.tipo),fD(r.fechaInicio),
+        tipoBadge(r.tipo),fDsol(r),
         r.reviewedAt?h('span',{style:{fontSize:11,color:'#374151'}},r.reviewedAt.slice(0,10)):h('span',{style:{fontSize:11,color:'#9CA3AF'}},'-'),
         badge(r.status)
       ])));
@@ -1202,7 +1203,7 @@ function buildAdmin(){
     const sc=h('div',{style:{...card(),marginBottom:14}});
     const si=h('input',{type:'text',placeholder:'Brand ID (mín. 3 caracteres)...',style:{...inp(false),fontSize:15},onInput:e=>{S.searchBrand=e.target.value.toUpperCase();R();}});si.value=S.searchBrand;sc.appendChild(si);
     ct.appendChild(sc);
-    if(S.searchBrand.length>=3){const res=S.reqs.filter(r=>r.brandId&&r.brandId.includes(S.searchBrand)&&r.status!=='rejected');if(res.length===0)sc.appendChild(h('div',{style:{marginTop:10,color:'#9CA3AF',fontSize:13}},'Sin resultados para "'+S.searchBrand+'"'));else{const rc=h('div',{style:card()});rc.appendChild(h('div',{style:{fontWeight:700,marginBottom:10,fontSize:13}},res.length+' solicitudes encontradas para '+S.searchBrand));rc.appendChild(buildTable(['Brand','País','Farmer','Palanca','Det.','Monto','Co-inv.','Fecha','Estado'],res.map(r=>[r.brandId,r.pais,nE(r.farmer),r.palanca==='free_trial'?'FT':'%',r.palanca==='free_trial'?r.semanas+'s':r.porcentaje+'%',fN(r.montoCampana),Object.assign(h('span',{style:{color:OR,fontWeight:700}}),{textContent:fN(r.coinversionAmount)}),fD(r.fechaInicio),badge(r.status)])));ct.appendChild(rc);}}
+    if(S.searchBrand.length>=3){const res=S.reqs.filter(r=>r.brandId&&r.brandId.includes(S.searchBrand)&&r.status!=='rejected');if(res.length===0)sc.appendChild(h('div',{style:{marginTop:10,color:'#9CA3AF',fontSize:13}},'Sin resultados para "'+S.searchBrand+'"'));else{const rc=h('div',{style:card()});rc.appendChild(h('div',{style:{fontWeight:700,marginBottom:10,fontSize:13}},res.length+' solicitudes encontradas para '+S.searchBrand));rc.appendChild(buildTable(['Brand','País','Farmer','Palanca','Det.','Monto','Co-inv.','Fecha','Estado'],res.map(r=>[r.brandId,r.pais,nE(r.farmer),r.palanca==='free_trial'?'FT':'%',r.palanca==='free_trial'?r.semanas+'s':r.porcentaje+'%',fN(r.montoCampana),Object.assign(h('span',{style:{color:OR,fontWeight:700}}),{textContent:fN(r.coinversionAmount)}),fDsol(r),badge(r.status)])));ct.appendChild(rc);}}
   }
 
   if(S.adminTab==='hc'){
