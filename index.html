@@ -44,7 +44,7 @@ const HC=[{"fa":"andres.reyes@rappi.com","pa":"MX","rg":"CDMX","ro":"SR","l":"an
 const uid=()=>Math.random().toString(36).substr(2,8).toUpperCase();
 const fN=n=>(n||0).toLocaleString('es-CO');
 const fD=function(d){if(!d||d===''||d==='0001-01-01'||d==='Invalid Date')return '—';try{var dt=new Date(d.length<=10?d+'T12:00:00':d);if(isNaN(dt.getTime()))return '—';return dt.toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'});}catch(e){return '—';}};
-const fDsol=function(r){var fi=fDsol(r);if(fi!=='—')return fi;var ca=fD((r.createdAt||'').slice(0,10));return ca!=='—'?'📅'+ca:'—';};
+const fDsol=function(r){var fi=fD(r.fechaInicio);if(fi!=='—')return fi;var ca=fD((r.createdAt||'').slice(0,10));return ca!=='—'?ca:'—';};
 const mA=d=>{const t=new Date(d+'T12:00:00');return t.getFullYear()+'-'+t.getMonth()};
 const mL=d=>new Date(d+'T12:00:00').toLocaleDateString('es-CO',{month:'long',year:'numeric'});
 const calcCI=(pal,mto,pct,sem)=>{if(!mto)return 0;if(pal==='porcentaje')return mto*((pct||0)/100);if(pal==='free_trial')return mto*((sem||1)/4);return 0;};
