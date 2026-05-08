@@ -986,7 +986,7 @@ function buildAdmin(){
   const wrap=h('div',{style:{minHeight:'100vh',background:'#F3F4F6'}});
   wrap.appendChild(topBar('#111827','Co-Inversión Rappi','ADMIN',S.user));
   var _ab=h('div',{style:{background:'#0a0f1a',padding:'6px 20px',display:'flex',justifyContent:'flex-end',alignItems:'center',gap:10}});var _abbtn=h('button',{style:{background:'#FF441F',color:'#fff',border:'none',borderRadius:8,padding:'5px 13px',fontSize:11,fontWeight:700,cursor:'pointer'},onClick:function(){abrirCierre(null,'admin');}},['Cierre ',CIERRE_LABEL,' — LATAM']);_ab.appendChild(_abbtn);wrap.appendChild(_ab);
-  wrap.appendChild(tabBar('#1F2937',[['dash','Dashboard'],['pend','Pendientes'+(pend.length?' ('+pend.length+')':'')],['aprobadas','✅ Aprobadas'+(appr.length?' ('+appr.length+')':'')],['hist','Historial'],['buscar','Buscar marca'],['hc','Cobertura HC'],['bdg','Budget']],S.adminTab,k=>{S.adminTab=k;R();}));
+  wrap.appendChild(tabBar('#1F2937',[['dash','Dashboard'],['supervisores','👥 Supervisores'],['pend','Pendientes'+(pend.length?' ('+pend.length+')':'')],['aprobadas','✅ Aprobadas'+(appr.length?' ('+appr.length+')':'')],['hist','Historial'],['buscar','Buscar marca'],['hc','Cobertura HC'],['bdg','Budget']],S.adminTab,k=>{S.adminTab=k;R();}));
   if(stuck.length>0){var sb=h('div',{style:{background:'#FEF2F2',border:'2px solid #F87171',borderRadius:10,padding:'10px 14px',margin:'12px 20px 0',maxWidth:1100,display:'flex',alignItems:'center',gap:10}});sb.appendChild(icon('alert',20,'#B45309'));sb.appendChild(h('div',{style:{flex:1,fontSize:13,color:'#991B1B'}},[h('strong',{},stuck.length+' solicitud(es) atascadas en supervisor. '),'No aparecerán en los CSVs hasta que el supervisor apruebe la excepción.']));wrap.appendChild(sb);}
 
   const ct=h('div',{style:{padding:20,maxWidth:1100,margin:'0 auto'}});
@@ -1241,6 +1241,137 @@ function buildAdmin(){
     ['✅ Comprometido: '+fN(comm),'🟢 Disponible: '+fN((S.budget.total||0)-comm),'⏳ En revisión: '+fN(pendAmt),'% Usado: '+pct.toFixed(1)+'%'].forEach(t=>info.appendChild(h('span',{},t)));card2.appendChild(info);ct.appendChild(card2);
   }
 
+
+
+  // ── TAB SUPERVISORES ──────────────────────────────────────────────
+  if(S.adminTab==='supervisores'){
+    if(typeof S.selSup==='undefined')S.selSup=null;
+    var supEmails=Object.keys(SUP_PINS);
+    var supData=supEmails.map(function(email){
+      var supName=email.replace('@rappi.com','');
+      var myTeam=HC.filter(function(h){return h.l&&h.l.toLowerCase()===email.toLowerCase()&&h.pa!=='Churn'&&h.pa!=='Nuevo';});
+      var myEm=new Set(myTeam.map(function(h){return nE(h.fa);}));
+      var myReqs=S.reqs.filter(function(r){return myEm.has(nE(r.farmer));});
+      var aprobadas=myReqs.filter(function(r){return r.status==='approved';});
+      var monto=aprobadas.reduce(function(a,r){return a+Number(r.montoCampana||0);},0);
+      var farmersActivos=new Set(myReqs.map(function(r){return nE(r.farmer);}));
+      var sinAct=myTeam.filter(function(m){return !farmersActivos.has(nE(m.fa));});
+      var pctAct=myTeam.length?Math.round(farmersActivos.size/myTeam.length*100):0;
+      return {email:email,name:supName,teamSize:myTeam.length,solicitudes:myReqs.length,aprobadas:aprobadas.length,pendientes:myReqs.filter(function(r){return r.status==='pending'||r.status==='pending_admin';}).length,monto:monto,farmersActivos:farmersActivos.size,sinAct:sinAct,pctAct:pctAct,myTeam:myTeam,myReqs:myReqs};
+    }).filter(function(s){return s.teamSize>0;}).sort(function(a,b){return b.solicitudes-a.solicitudes;});
+
+    var maxSol=supData.length?supData[0].solicitudes||1:1;
+    var topMonto=supData.slice().sort(function(a,b){return b.monto-a.monto;})[0]||{name:'—',monto:0};
+    var sinSolCount=supData.filter(function(s){return s.solicitudes===0;}).length;
+
+    // Header
+    ct.appendChild(h('div',{style:{marginBottom:16}},[
+      h('div',{style:{fontSize:15,fontWeight:800,color:'#111827',marginBottom:2}},'Dashboard de supervisores'),
+      h('div',{style:{fontSize:12,color:'#6B7280'}},supData.length+' supervisores · '+S.reqs.length+' solicitudes en sistema')
+    ]));
+
+    // KPIs top
+    var kRow=h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:18}});
+    [
+      {l:'Total solicitudes',v:S.reqs.length,c:'#374151'},
+      {l:'Top volumen',v:supData[0]?supData[0].name:'—',c:'#FF441F',sm:true},
+      {l:'Top monto',v:topMonto.name,c:'#0F766E',sm:true},
+      {l:'Supervisores sin actividad',v:sinSolCount,c:sinSolCount>0?'#D97706':'#10B981'}
+    ].forEach(function(k){
+      var kc=h('div',{style:{background:'#fff',borderRadius:12,padding:'14px 16px',border:'1px solid #E5E7EB'}});
+      kc.appendChild(h('div',{style:{fontSize:10,color:'#6B7280',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:6}},k.l));
+      kc.appendChild(h('div',{style:{fontSize:k.sm?14:24,fontWeight:800,color:k.c,lineHeight:1.1}},String(k.v)));
+      kRow.appendChild(kc);
+    });
+    ct.appendChild(kRow);
+
+    // Cards supervisores
+    var gridEl=h('div',{style:{display:'flex',flexDirection:'column',gap:8}});
+    supData.forEach(function(s){
+      var isSel=S.selSup===s.email;
+      var pctBar=Math.round(s.solicitudes/maxSol*100);
+      var actColor=s.pctAct>=70?'#10B981':s.pctAct>=40?'#F59E0B':'#EF4444';
+      var actBg=s.pctAct>=70?'#D1FAE5':s.pctAct>=40?'#FEF3C7':'#FEE2E2';
+      var actTxt=s.pctAct>=70?'#065F46':s.pctAct>=40?'#92400E':'#991B1B';
+
+      var cardEl=h('div',{style:{background:'#fff',borderRadius:14,border:'2px solid '+(isSel?'#FF441F':'#E5E7EB'),overflow:'hidden'}});
+
+      // Header clickeable
+      var ch=h('div',{style:{padding:'14px 18px',display:'flex',alignItems:'center',gap:14,cursor:'pointer'},onClick:function(){S.selSup=isSel?null:s.email;R();}});
+
+      var av=h('div',{style:{width:40,height:40,borderRadius:'50%',background:s.solicitudes>0?'#FEF2EE':'#F3F4F6',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:14,color:s.solicitudes>0?'#FF441F':'#9CA3AF',flexShrink:0}},s.name.charAt(0).toUpperCase());
+      ch.appendChild(av);
+
+      var ci=h('div',{style:{flex:1,minWidth:0}});
+      ci.appendChild(h('div',{style:{fontWeight:700,fontSize:13,color:'#111827'}},s.name));
+      var bt=h('div',{style:{background:'#F3F4F6',borderRadius:3,height:4,marginTop:5}});
+      var bf=h('div',{style:{background:'#FF441F',borderRadius:3,height:4,width:pctBar+'%'}});
+      bt.appendChild(bf);ci.appendChild(bt);
+      ch.appendChild(ci);
+
+      var mets=h('div',{style:{display:'flex',gap:14,flexShrink:0}});
+      [{l:'Solicitudes',v:s.solicitudes,c:'#111827'},{l:'Aprobadas',v:s.aprobadas,c:'#10B981'},{l:'Monto',v:s.monto>=1000000?'$'+(s.monto/1000000).toFixed(1)+'M':s.monto>=1000?'$'+(s.monto/1000).toFixed(0)+'K':'$'+s.monto,c:'#0F766E'}].forEach(function(m){
+        var mb=h('div',{style:{textAlign:'center',minWidth:48}});
+        mb.appendChild(h('div',{style:{fontSize:16,fontWeight:800,color:m.c}},String(m.v)));
+        mb.appendChild(h('div',{style:{fontSize:9,color:'#9CA3AF',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.03em',marginTop:2}},m.l));
+        mets.appendChild(mb);
+      });
+      var badgeAct=h('div',{style:{background:actBg,color:actTxt,borderRadius:8,padding:'4px 10px',fontSize:12,fontWeight:700,marginLeft:4}},s.pctAct+'% activo');
+      mets.appendChild(badgeAct);
+      ch.appendChild(mets);
+      ch.appendChild(h('span',{style:{color:'#9CA3AF',fontSize:14,marginLeft:6}},isSel?'▲':'▼'));
+      cardEl.appendChild(ch);
+
+      // Detalle expandido
+      if(isSel){
+        var det=h('div',{style:{borderTop:'1px solid #F3F4F6',padding:'16px 18px'}});
+        det.appendChild(h('div',{style:{fontSize:12,fontWeight:700,color:'#374151',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.04em'}},'Farmers del equipo ('+s.teamSize+')'));
+
+        var fStats=s.myTeam.map(function(m){
+          var fe=nE(m.fa);
+          var fr=s.myReqs.filter(function(r){return nE(r.farmer)===fe;});
+          var fapr=fr.filter(function(r){return r.status==='approved';});
+          var fmonto=fapr.reduce(function(a,r){return a+Number(r.montoCampana||0);},0);
+          return {name:fe,pa:m.pa,ro:m.ro,total:fr.length,aprobadas:fapr.length,monto:fmonto};
+        }).sort(function(a,b){return b.total-a.total;});
+
+        var maxFSol=fStats[0]?fStats[0].total||1:1;
+
+        fStats.forEach(function(f,i){
+          var frow=h('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'7px 8px',borderRadius:8,background:i%2===0?'#FAFAFA':'#fff',marginBottom:2}});
+          frow.appendChild(h('div',{style:{width:20,textAlign:'center',fontSize:11,fontWeight:700,color:i<3?'#FF441F':'#9CA3AF',flexShrink:0}},'#'+(i+1)));
+          var fi=h('div',{style:{flex:1,minWidth:0}});
+          fi.appendChild(h('div',{style:{fontSize:12,fontWeight:600,color:'#111827',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},f.name));
+          fi.appendChild(h('div',{style:{fontSize:10,color:'#9CA3AF',marginTop:1}},f.pa+' · '+f.ro));
+          frow.appendChild(fi);
+          var fbt=h('div',{style:{width:70,background:'#F3F4F6',borderRadius:2,height:3,flexShrink:0}});
+          var fbf=h('div',{style:{background:f.total>0?'#FF441F':'#E5E7EB',borderRadius:2,height:3,width:Math.round(f.total/maxFSol*100)+'%'}});
+          fbt.appendChild(fbf);frow.appendChild(fbt);
+          [{v:f.total,l:'sols',c:'#374151'},{v:f.aprobadas,l:'aprobadas',c:'#10B981'},{v:f.monto>=1000?'$'+(f.monto/1000).toFixed(0)+'K':'$'+f.monto,l:'monto',c:'#0F766E'}].forEach(function(st){
+            var sb=h('div',{style:{textAlign:'right',minWidth:46,flexShrink:0}});
+            sb.appendChild(h('div',{style:{fontSize:12,fontWeight:700,color:st.c}},String(st.v)));
+            sb.appendChild(h('div',{style:{fontSize:9,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.03em'}},st.l));
+            frow.appendChild(sb);
+          });
+          if(f.total===0)frow.appendChild(h('span',{style:{background:'#FEF3C7',color:'#92400E',borderRadius:5,padding:'2px 7px',fontSize:10,fontWeight:700,flexShrink:0,marginLeft:4}},'Sin actividad'));
+          det.appendChild(frow);
+        });
+
+        // Farmers sin actividad
+        if(s.sinAct.length>0){
+          var sinDiv=h('div',{style:{marginTop:12,background:'#FEF9C3',border:'1px solid #FDE68A',borderRadius:10,padding:'10px 14px'}});
+          sinDiv.appendChild(h('div',{style:{fontSize:10,fontWeight:700,color:'#92400E',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.04em'}},'Sin ninguna solicitud ('+s.sinAct.length+') — activar urgente'));
+          var pills=h('div',{style:{display:'flex',flexWrap:'wrap',gap:5}});
+          s.sinAct.forEach(function(m){pills.appendChild(h('span',{style:{background:'#fff',border:'1px solid #FDE68A',borderRadius:5,padding:'2px 8px',fontSize:11,color:'#78350F'}},nE(m.fa)));});
+          sinDiv.appendChild(pills);
+          det.appendChild(sinDiv);
+        }
+        cardEl.appendChild(det);
+      }
+      gridEl.appendChild(cardEl);
+    });
+    ct.appendChild(gridEl);
+  }
 
   wrap.appendChild(ct);return wrap;
 }
