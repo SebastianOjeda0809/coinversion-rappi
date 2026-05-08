@@ -1247,11 +1247,20 @@ function buildAdmin(){
   if(S.adminTab==='supervisores'){
     if(typeof S.selSup==='undefined')S.selSup=null;
     var supEmails=Object.keys(SUP_PINS);
+    // Solo solicitudes desde mayo 2026 (mes actual en adelante)
+    var INICIO_MAYO=new Date('2026-05-01T00:00:00');
+    var reqsMayo=S.reqs.filter(function(r){
+      var f=r.fecha||r.date||r.timestamp||r.createdAt||'';
+      if(!f)return true; // si no tiene fecha, incluir
+      var d=new Date(f);
+      return !isNaN(d)&&d>=INICIO_MAYO;
+    });
+
     var supData=supEmails.map(function(email){
       var supName=email.replace('@rappi.com','');
       var myTeam=HC.filter(function(h){return h.l&&h.l.toLowerCase()===email.toLowerCase()&&h.pa!=='Churn'&&h.pa!=='Nuevo';});
       var myEm=new Set(myTeam.map(function(h){return nE(h.fa);}));
-      var myReqs=S.reqs.filter(function(r){return myEm.has(nE(r.farmer));});
+      var myReqs=reqsMayo.filter(function(r){return myEm.has(nE(r.farmer));});
       var aprobadas=myReqs.filter(function(r){return r.status==='approved';});
       var monto=aprobadas.reduce(function(a,r){return a+Number(r.montoCampana||0);},0);
       var farmersActivos=new Set(myReqs.map(function(r){return nE(r.farmer);}));
@@ -1266,14 +1275,14 @@ function buildAdmin(){
 
     // Header
     ct.appendChild(h('div',{style:{marginBottom:16}},[
-      h('div',{style:{fontSize:15,fontWeight:800,color:'#111827',marginBottom:2}},'Dashboard de supervisores'),
-      h('div',{style:{fontSize:12,color:'#6B7280'}},supData.length+' supervisores · '+S.reqs.length+' solicitudes en sistema')
+      h('div',{style:{fontSize:15,fontWeight:800,color:'#111827',marginBottom:2}},'Seguimiento Mayo 2026 — Supervisores'),
+      h('div',{style:{fontSize:12,color:'#6B7280'}},supData.length+' supervisores · '+reqsMayo.length+' solicitudes desde 1 mayo · '+S.reqs.length+' históricas totales')
     ]));
 
     // KPIs top
     var kRow=h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:18}});
     [
-      {l:'Total solicitudes',v:S.reqs.length,c:'#374151'},
+      {l:'Solicitudes Mayo 2026',v:reqsMayo.length,c:'#374151'},
       {l:'Top volumen',v:supData[0]?supData[0].name:'—',c:'#FF441F',sm:true},
       {l:'Top monto',v:topMonto.name,c:'#0F766E',sm:true},
       {l:'Supervisores sin actividad',v:sinSolCount,c:sinSolCount>0?'#D97706':'#10B981'}
