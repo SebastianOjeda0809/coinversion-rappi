@@ -606,7 +606,9 @@ function doSubmit(){
     const nueva={id:uid(),createdAt:new Date().toISOString(),status:'pending_supervisor',
       farmer:S.user,...req,tipo:req.tipoGestion||vr.tipo,fechaInicio:req.fechaInicio||hoyEx,
       coinversionAmount:calcCI(req.palanca,req.montoCampana,req.porcentaje,req.semanas),
-      esExcepcion:true,exc:true,excepcionRazon:S.excRazon.trim()};
+      esExcepcion:true,exc:true,
+      excepcionRazon:S.excRazon.trim(),
+      excRazon:S.excRazon.trim()}; // guardamos en ambos campos para compatibilidad
     S.reqs=[...S.reqs,nueva];sg("ci_reqs_abr26",S.reqs);
     apiUpsertReq(nueva).then(function(res){if(!res.ok)S.okMsg='Guardado local; revisa conexión ('+(res.error||'?')+')';else S.okMsg='Excepción enviada al supervisor.';render();});
     S.okMsg='Enviando al supervisor...';
@@ -857,8 +859,8 @@ function buildSupervisor(){
         bh.appendChild(ci);
         box.appendChild(bh);
 
-        // Motivo
-        var _razon=r.excepcionRazon||r.excRazon||'';
+        // Motivo — busca todos los campos posibles del Sheet
+        var _razon=r.excepcionRazon||r.excRazon||r.exc_razon||r.excepcion_razon||r.razon||r.motivo||r.reason||'';
         const body=h('div',{style:{padding:'16px 20px'}});
         if(_razon){
           const motivo=h('div',{style:{background:'#FFFBEB',border:'1px solid #FDE68A',borderRadius:10,padding:'12px 16px',marginBottom:16}});
@@ -873,20 +875,21 @@ function buildSupervisor(){
         const btns=h('div',{style:{display:'flex',gap:10}});
         const btnAprob=h('button',{style:{...btn('#059669','#fff'),flex:1,padding:'11px',fontSize:14,fontWeight:700,borderRadius:10},
           onClick:function(){
-            if(!confirm('¿Aprobar la excepción de brand '+r.brandId+'?'))return;
-            var upd=Object.assign({},r,{status:'pending_admin',supReviewedAt:new Date().toISOString()});
+            var upd=Object.assign({},r,{status:'pending_admin',supReviewedAt:new Date().toISOString(),supAprobadoPor:S.user});
             S.reqs=S.reqs.map(function(x){return x.id===r.id?upd:x;});
             sg('ci_reqs_abr26',S.reqs);
-            apiUpsertReq(upd).then(render);R();
+            R();
+            apiUpsertReq(upd).then(function(){R();});
           }},'✅ Aprobar excepción');
         const btnRech=h('button',{style:{...btn('#FEF2F2','#DC2626'),flex:1,padding:'11px',fontSize:14,fontWeight:700,borderRadius:10,border:'2px solid #FECACA'},
           onClick:function(){
-            var motivo=prompt('Motivo del rechazo:');
+            var motivo=window.prompt('Motivo del rechazo:');
             if(motivo===null)return;
-            var upd=Object.assign({},r,{status:'rejected',rejectionReason:motivo||'Rechazado por supervisor',supReviewedAt:new Date().toISOString()});
+            var upd=Object.assign({},r,{status:'rejected',rejectionReason:motivo||'Rechazado por supervisor',supReviewedAt:new Date().toISOString(),supAprobadoPor:S.user});
             S.reqs=S.reqs.map(function(x){return x.id===r.id?upd:x;});
             sg('ci_reqs_abr26',S.reqs);
-            apiUpsertReq(upd).then(render);R();
+            R();
+            apiUpsertReq(upd).then(function(){R();});
           }},'❌ Rechazar');
         btns.appendChild(btnAprob);btns.appendChild(btnRech);
         body.appendChild(btns);
@@ -906,9 +909,9 @@ function buildSupervisor(){
 // ─── FUNCIONES DE APROBACIÓN ─────────────────────────────────────────────────
 
 function aprobarGrupoCSV(palanca){
-  // Solo aprueba las pendientes del palanca indicado y genera UN csv
+  // Solo aprueba pendientes del palanca indicado — NUNCA excepciones sin sup
   var grupo=S.reqs.filter(function(r){
-    return (r.status==='pending'||r.status==='pending_admin')&&r.palanca===palanca;
+    return (r.status==='pending'||r.status==='pending_admin')&&r.palanca===palanca&&!(r.exc&&r.status==='pending');
   });
   if(grupo.length===0)return;
   var ahora=new Date().toISOString();
@@ -977,7 +980,7 @@ function aprobarUno(id){
 }
 
 function buildAdmin(){
-  const pend=S.reqs.filter(r=>r.status==='pending'||r.status==='pending_admin');const stuck=S.reqs.filter(r=>r.status==='pending_supervisor');
+  const pend=S.reqs.filter(r=>(r.status==='pending'||r.status==='pending_admin')&&!(r.exc&&r.status==='pending'));const stuck=S.reqs.filter(r=>r.status==='pending_supervisor');
   const appr=S.reqs.filter(r=>r.status==='approved');
   const comm=appr.reduce((s,r)=>s+(r.coinversionAmount||0),0);
   const pendAmt=pend.reduce((s,r)=>s+(r.coinversionAmount||0),0);
@@ -1072,7 +1075,7 @@ function buildAdmin(){
           hdr2.appendChild(tipoBadge(r.tipo));
           if(r.esExcepcion)hdr2.appendChild(h('span',{style:pill('#FEF9C3','#713F12')},'EXCEPCIÓN'));
           info.appendChild(hdr2);
-          var _razon2=r.excepcionRazon||r.excRazon||''; if((r.esExcepcion||r.exc)&&_razon2)
+          var _razon2=r.excepcionRazon||r.excRazon||r.exc_razon||r.excepcion_razon||r.razon||r.motivo||r.reason||''; if((r.esExcepcion||r.exc)&&_razon2)
             info.appendChild(h('div',{style:{background:'#FEF9C3',border:'1px solid #FDE047',borderRadius:'8px',padding:'8px 12px',marginBottom:8,fontSize:13,color:'#78350F'}},'⚡ '+_razon2));
           // Details grid
           var det=h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'4px 14px',fontSize:13,color:'#4B5563',marginBottom:8}});
