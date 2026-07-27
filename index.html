@@ -1636,6 +1636,51 @@ setInterval(autoRefresh,20000);
 document.addEventListener('visibilitychange',function(){if(!document.hidden)autoRefresh();});
 window.addEventListener('focus',autoRefresh);
 
+// Detección de nueva versión desplegada: evita que alguien se quede con una
+// pestaña vieja abierta (sin este mismo mecanismo) sin enterarse de que hay
+// una actualización — garantiza que todos terminen en la misma versión.
+var _appVersionTag=null;
+async function _capturarVersionActual(){
+  try{
+    var r=await fetch(location.href,{method:'HEAD',cache:'no-store'});
+    _appVersionTag=r.headers.get('etag')||r.headers.get('last-modified');
+  }catch(e){}
+}
+var _bannerActualizacionVisible=false;
+function _mostrarBannerActualizacion(){
+  if(_bannerActualizacionVisible)return;
+  _bannerActualizacionVisible=true;
+  var b=document.createElement('div');
+  b.id='_updateBanner';
+  b.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:99999;background:#111827;color:#fff;padding:12px 16px;display:flex;align-items:center;justify-content:center;gap:14px;font:600 13px sans-serif;box-shadow:0 -2px 10px rgba(0,0,0,.25)';
+  var msg=document.createElement('span');
+  msg.textContent='🔄 Hay una nueva versión de la app disponible.';
+  b.appendChild(msg);
+  var btn=document.createElement('button');
+  btn.textContent='Actualizar ahora';
+  btn.style.cssText='background:#FF441F;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer';
+  btn.onclick=function(){location.reload();};
+  b.appendChild(btn);
+  document.body.appendChild(b);
+  // Si nadie actualiza manualmente, recarga sola (respetando formularios activos)
+  (function _tryAutoReload(){
+    setTimeout(function(){
+      if(_inputActivo()){_tryAutoReload();return;}
+      location.reload();
+    },90000);
+  })();
+}
+async function _checkForUpdate(){
+  try{
+    if(!_appVersionTag)return;
+    var r=await fetch(location.href,{method:'HEAD',cache:'no-store'});
+    var tag=r.headers.get('etag')||r.headers.get('last-modified');
+    if(tag&&tag!==_appVersionTag)_mostrarBannerActualizacion();
+  }catch(e){}
+}
+_capturarVersionActual();
+setInterval(_checkForUpdate,60000);
+
 // === CIERRE DE MES ===
 var CIERRE_LABEL='Abril 2026';
 
