@@ -1123,7 +1123,7 @@ function buildSupervisor(){
 // ══════════════════════════════════════════════════
 // ─── FUNCIONES DE APROBACIÓN ─────────────────────────────────────────────────
 
-async function aprobarGrupoCSV(palanca){
+function aprobarGrupoCSV(palanca){
   // Solo aprueba pendientes del palanca indicado — NUNCA excepciones sin sup
   var grupo=S.reqs.filter(function(r){
     return (r.status==='pending'||r.status==='pending_admin')&&r.palanca===palanca&&!(r.exc&&r.status==='pending');
@@ -1136,9 +1136,13 @@ async function aprobarGrupoCSV(palanca){
     return ap?ap:r;
   });
   saveReqs(nuevosReqs);
-  var _syncR=await Promise.all(aprobadas.map(function(a){return apiUpsertReq(a);}));
-  var _syncFail=_syncR.filter(function(r){return !r||!r.ok;}).length;
-  if(_syncFail>0){alert('⚠️ '+_syncFail+' de '+aprobadas.length+' aprobaciones no se pudieron sincronizar con el servidor. El supervisor/farmer no verá estos cambios hasta reintentar. Revisa tu conexión y usa "🔄 Re-aprobar y sincronizar" en Pendientes.');}
+  // No se espera la respuesta del servidor aquí — Apps Script puede tardar
+  // varios segundos y bloquear la generación del CSV se sentía como que el
+  // botón no respondía. Se sincroniza en segundo plano y se avisa si falla.
+  Promise.all(aprobadas.map(function(a){return apiUpsertReq(a);})).then(function(_syncR){
+    var _syncFail=_syncR.filter(function(r){return !r||!r.ok;}).length;
+    if(_syncFail>0){alert('⚠️ '+_syncFail+' de '+aprobadas.length+' aprobaciones no se pudieron sincronizar con el servidor. El supervisor/farmer no verá estos cambios hasta reintentar. Revisa tu conexión y usa "🔄 Re-aprobar y sincronizar" en Pendientes.');}
+  });
   var fn=ahora.slice(0,10);
   if(palanca==='porcentaje'){
     var files=makeDescuentoCSVs(aprobadas);
@@ -1157,7 +1161,7 @@ async function aprobarGrupoCSV(palanca){
   render();
 }
 
-async function aprobarTanda(){
+function aprobarTanda(){
   var pend=S.reqs.filter(function(r){return r.status==='pending'||r.status==='pending_admin';});
   if(pend.length===0)return;
   var ahora=new Date().toISOString();
@@ -1167,9 +1171,10 @@ async function aprobarTanda(){
     return ap?ap:r;
   });
   saveReqs(nuevosReqs);
-  var _syncR2=await Promise.all(aprobadas.map(function(a){return apiUpsertReq(a);}));
-  var _syncFail2=_syncR2.filter(function(r){return !r||!r.ok;}).length;
-  if(_syncFail2>0){alert('⚠️ '+_syncFail2+' de '+aprobadas.length+' aprobaciones no se pudieron sincronizar con el servidor. El supervisor/farmer no verá estos cambios hasta reintentar. Revisa tu conexión y usa "🔄 Re-aprobar y sincronizar" en Pendientes.');}
+  Promise.all(aprobadas.map(function(a){return apiUpsertReq(a);})).then(function(_syncR2){
+    var _syncFail2=_syncR2.filter(function(r){return !r||!r.ok;}).length;
+    if(_syncFail2>0){alert('⚠️ '+_syncFail2+' de '+aprobadas.length+' aprobaciones no se pudieron sincronizar con el servidor. El supervisor/farmer no verá estos cambios hasta reintentar. Revisa tu conexión y usa "🔄 Re-aprobar y sincronizar" en Pendientes.');}
+  });
   // Generar CSVs
   var fn=ahora.slice(0,10);
   var dFiles=makeDescuentoCSVs(aprobadas);
@@ -1181,14 +1186,15 @@ async function aprobarTanda(){
   }
   render();
 }
-async function aprobarUno(id){
+function aprobarUno(id){
   var r=S.reqs.find(function(x){return x.id===id;});
   if(!r)return;
   var ahora=new Date().toISOString();
   var aprobada=Object.assign({},r,{status:'approved',reviewedAt:ahora});
   saveReqs(S.reqs.map(function(x){return x.id===id?aprobada:x;}));
-  var _syncR3=await apiUpsertReq(aprobada);
-  if(!_syncR3||!_syncR3.ok){alert('⚠️ La aprobación no se pudo sincronizar con el servidor. El supervisor/farmer no verá este cambio hasta reintentar. Revisa tu conexión y usa "🔄 Re-aprobar y sincronizar" en Pendientes.');}
+  apiUpsertReq(aprobada).then(function(_syncR3){
+    if(!_syncR3||!_syncR3.ok){alert('⚠️ La aprobación no se pudo sincronizar con el servidor. El supervisor/farmer no verá este cambio hasta reintentar. Revisa tu conexión y usa "🔄 Re-aprobar y sincronizar" en Pendientes.');}
+  });
   var fn=(r.brandId||'id')+'_'+ahora.slice(0,10);
   if(r.palanca==='porcentaje'){
     var files=makeDescuentoCSVs([aprobada]);
@@ -1490,11 +1496,12 @@ function buildAdmin(){
             var ri=h('input',{type:'text',placeholder:'Motivo del rechazo...',style:{...inp(false),flex:1},onInput:function(e){S.rejectReason=e.target.value;}});
             ri.value=S.rejectReason;
             rj.appendChild(ri);
-            rj.appendChild(h('button',{style:{...btn('#EF4444','#fff'),padding:'8px 14px'},onClick:async function(){
+            rj.appendChild(h('button',{style:{...btn('#EF4444','#fff'),padding:'8px 14px'},onClick:function(){
               var _rechazada=Object.assign({},r,{status:'rejected',rejectionReason:S.rejectReason,reviewedAt:new Date().toISOString()});
               saveReqs(S.reqs.map(function(x){return x.id===r.id?_rechazada:x;}));
-              var _sr4=await apiUpsertReq(_rechazada);
-              if(!_sr4||!_sr4.ok){alert('⚠️ El rechazo no se pudo sincronizar con el servidor. El supervisor/farmer no verá este cambio hasta reintentar.');}
+              apiUpsertReq(_rechazada).then(function(_sr4){
+                if(!_sr4||!_sr4.ok){alert('⚠️ El rechazo no se pudo sincronizar con el servidor. El supervisor/farmer no verá este cambio hasta reintentar.');}
+              });
               S.rejectId=null;S.rejectReason='';render();
             }},'Confirmar'));
             rj.appendChild(h('button',{style:{...btn('#F3F4F6','#374151'),padding:'8px 12px'},onClick:function(){S.rejectId=null;render();}},'Cancelar'));
@@ -1505,7 +1512,7 @@ function buildAdmin(){
           if(S.rejectId!==r.id){
             var ba=h('div',{style:{display:'flex',flexDirection:'column',gap:6,minWidth:110}});
             ba.appendChild(h('button',{style:{...btn('#10B981','#fff'),padding:'9px 0',width:'100%',textAlign:'center'},
-              onClick:async function(){var id=r.id;var ahora2=new Date().toISOString();var aprobada2=Object.assign({},r,{status:'approved',reviewedAt:ahora2});saveReqs(S.reqs.map(function(x){return x.id===id?aprobada2:x;}));var _sr=await apiUpsertReq(aprobada2);if(!_sr||!_sr.ok){alert('⚠️ La aprobación no se pudo sincronizar con el servidor. El supervisor/farmer no verá este cambio hasta reintentar. Revisa tu conexión y usa "🔄 Re-aprobar y sincronizar" en Pendientes.');}render();}},'✓ Aprobar'));
+              onClick:function(){var id=r.id;var ahora2=new Date().toISOString();var aprobada2=Object.assign({},r,{status:'approved',reviewedAt:ahora2});saveReqs(S.reqs.map(function(x){return x.id===id?aprobada2:x;}));apiUpsertReq(aprobada2).then(function(_sr){if(!_sr||!_sr.ok){alert('⚠️ La aprobación no se pudo sincronizar con el servidor. El supervisor/farmer no verá este cambio hasta reintentar. Revisa tu conexión y usa "🔄 Re-aprobar y sincronizar" en Pendientes.');}});render();}},'✓ Aprobar'));
             ba.appendChild(h('button',{style:{...btn('#059669','#fff',{fontSize:11}),padding:'9px 0',width:'100%',textAlign:'center'},
               onClick:function(){aprobarUno(r.id);}},'✓ Aprobar+CSV'));
             ba.appendChild(h('button',{style:{...btn('#FEE2E2','#B91C1C'),padding:'9px 0',width:'100%',textAlign:'center'},
