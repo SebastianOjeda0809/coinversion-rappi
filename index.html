@@ -19,6 +19,12 @@ select{appearance:auto}
 input[type=number]::-webkit-inner-spin-button{opacity:1}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 #app>div{animation:fadeIn 0.2s ease}
+.hoverlift{transition:box-shadow .18s ease,transform .18s ease,border-color .18s ease}
+.hoverlift:hover{box-shadow:0 8px 24px rgba(15,23,42,0.10);transform:translateY(-2px)}
+.chev{transition:transform .18s ease}
+.tabpill{transition:background .15s ease,color .15s ease}
+.searchbox{transition:border-color .15s ease,box-shadow .15s ease}
+.searchbox:focus{border-color:#FF441F;box-shadow:0 0 0 3px rgba(255,68,31,0.12)}
 </style>
 </head>
 <body>
@@ -490,10 +496,10 @@ function topBar(bg,title,badge2,right){
 }
 
 function tabBar(bg,tabs,active,onClick){
-  const bar=h('div',{style:{display:'flex',background:bg,padding:'0 20px',borderBottom:'1px solid rgba(255,255,255,0.1)'}});
+  const bar=h('div',{style:{display:'flex',gap:4,background:bg,padding:'10px 20px',overflowX:'auto'}});
   tabs.forEach(([k,l])=>{
     const a=active===k;
-    bar.appendChild(h('button',{style:{background:'none',border:'none',padding:'11px 14px',cursor:'pointer',fontSize:13,fontWeight:a?700:400,color:a?'#fff':'rgba(255,255,255,0.5)',borderBottom:a?'2px solid #fff':'2px solid transparent'},onClick:()=>onClick(k)},l));
+    bar.appendChild(h('button',{class:'tabpill',style:{background:a?'#fff':'transparent',border:'none',borderRadius:999,padding:'8px 16px',cursor:'pointer',fontSize:13,fontWeight:a?700:500,color:a?'#111827':'rgba(255,255,255,0.6)',whiteSpace:'nowrap',boxShadow:a?'0 2px 6px rgba(0,0,0,0.18)':'none'},onClick:()=>onClick(k)},l));
   });
   return bar;
 }
@@ -987,7 +993,7 @@ function buildSupervisor(){
       if(pend>0)fbadges.appendChild(h('span',{style:{...pill('#FEF3C7','#92400E'),fontSize:11}},'⏳ '+pend+' en admin'));
       if(apro>0)fbadges.appendChild(h('span',{style:{...pill('#D1FAE5','#065F46'),fontSize:11}},'✅ '+apro+' aprobadas'));
       if(mr.length===0)fbadges.appendChild(h('span',{style:{...pill('#F3F4F6','#9CA3AF'),fontSize:11}},'Sin solicitudes'));
-      fbadges.appendChild(h('span',{style:{fontSize:16,color:'#9CA3AF',marginLeft:4}},isSel?'▲':'▼'));
+      fbadges.appendChild(h('span',{class:'chev',style:{fontSize:16,color:'#9CA3AF',marginLeft:4,display:'inline-block',transform:isSel?'rotate(180deg)':'rotate(0deg)'}},'▼'));
       fhdr.appendChild(fbadges);
       fc.appendChild(fhdr);
 
@@ -1263,7 +1269,7 @@ function buildAdmin(){
       paisRows.forEach(function(pr){
         var isSel=S.selPais===pr.pais;
         var pctBar=Math.round(pr.count/maxCount*100);
-        var cardEl=h('div',{style:{background:'#fff',borderRadius:14,border:'2px solid '+(isSel?'#FF441F':'#E5E7EB'),overflow:'hidden'}});
+        var cardEl=h('div',{class:'hoverlift',style:{background:'#fff',borderRadius:14,border:'2px solid '+(isSel?'#FF441F':'#E5E7EB'),overflow:'hidden'}});
 
         var ch=h('div',{style:{padding:'14px 18px',display:'flex',alignItems:'center',gap:14,cursor:'pointer'},onClick:function(){S.selPais=isSel?null:pr.pais;R();}});
         var av=h('div',{style:{width:40,height:40,borderRadius:'50%',background:'#FEF2EE',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:14,color:'#FF441F',flexShrink:0}},pr.pais.charAt(0).toUpperCase());
@@ -1284,7 +1290,7 @@ function buildAdmin(){
           mets.appendChild(mb);
         });
         ch.appendChild(mets);
-        ch.appendChild(h('span',{style:{color:'#9CA3AF',fontSize:14,marginLeft:6}},isSel?'▲':'▼'));
+        ch.appendChild(h('span',{class:'chev',style:{color:'#9CA3AF',fontSize:14,marginLeft:6,display:'inline-block',transform:isSel?'rotate(180deg)':'rotate(0deg)'}},'▼'));
         cardEl.appendChild(ch);
 
         if(isSel){
@@ -1386,7 +1392,7 @@ function buildAdmin(){
         grupo.forEach(function(r){
           var ci=r.coinversionAmount||0;
           var pctB=S.budget.total?((ci/S.budget.total)*100).toFixed(2):'—';
-          var box=h('div',{style:card()});
+          var box=h('div',{class:'hoverlift',style:card()});
           var row=h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:14}});
           var info=h('div',{style:{flex:1}});
           // Title row
@@ -1476,12 +1482,12 @@ function buildAdmin(){
         var abierto=S.aprobadasMesAbierto===mes;
         var montoMes=grupo.reduce(function(s,r){return s+(r.coinversionAmount||0);},0);
         var mesLabel=mes==='sin-fecha'?'Sin fecha':(function(l){return l.charAt(0).toUpperCase()+l.slice(1);})(mL(mes+'-01'));
-        var secc=h('div',{style:{marginBottom:10,border:'1px solid #E5E7EB',borderRadius:10,overflow:'hidden'}});
+        var secc=h('div',{class:'hoverlift',style:{marginBottom:10,border:'1px solid #E5E7EB',borderRadius:10,overflow:'hidden'}});
         var hdr=h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',background:abierto?'#F0FDF4':'#F9FAFB',cursor:'pointer'},
           onClick:function(){S.aprobadasMesAbierto=abierto?null:mes;R();}
         },[
           h('div',{style:{display:'flex',alignItems:'center',gap:10}},[
-            h('span',{style:{fontSize:12,color:'#6B7280'}},abierto?'▼':'▶'),
+            h('span',{class:'chev',style:{fontSize:12,color:'#6B7280',display:'inline-block',transform:abierto?'rotate(90deg)':'rotate(0deg)'}},'▶'),
             h('span',{style:{fontWeight:700,fontSize:14}},mesLabel)
           ]),
           h('span',{style:{fontSize:12,color:'#6B7280'}},grupo.length+' aprobadas · '+fN(montoMes))
@@ -1568,12 +1574,12 @@ function buildAdmin(){
         var grupo=byMesH[mes];
         var abierto=S.histMesAbierto===mes;
         var mesLabel=mes==='sin-fecha'?'Sin fecha':(function(l){return l.charAt(0).toUpperCase()+l.slice(1);})(mL(mes+'-01'));
-        var secc=h('div',{style:{marginBottom:10,border:'1px solid #E5E7EB',borderRadius:10,overflow:'hidden'}});
+        var secc=h('div',{class:'hoverlift',style:{marginBottom:10,border:'1px solid #E5E7EB',borderRadius:10,overflow:'hidden'}});
         var hdr=h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'12px 16px',background:abierto?'#F8FAFC':'#F9FAFB',cursor:'pointer'},
           onClick:function(){S.histMesAbierto=abierto?null:mes;R();}
         },[
           h('div',{style:{display:'flex',alignItems:'center',gap:10}},[
-            h('span',{style:{fontSize:12,color:'#6B7280'}},abierto?'▼':'▶'),
+            h('span',{class:'chev',style:{fontSize:12,color:'#6B7280',display:'inline-block',transform:abierto?'rotate(90deg)':'rotate(0deg)'}},'▶'),
             h('span',{style:{fontWeight:700,fontSize:14}},mesLabel)
           ]),
           h('span',{style:{fontSize:12,color:'#6B7280'}},grupo.length+' solicitud'+(grupo.length>1?'es':''))
@@ -1600,11 +1606,33 @@ function buildAdmin(){
   }
 
   if(S.adminTab==='buscar'){
-    ct.appendChild(h('h2',{style:{fontSize:16,fontWeight:800,marginBottom:14}},'Buscar marca'));
+    ct.appendChild(h('h2',{style:{fontSize:16,fontWeight:800,marginBottom:14}},'🔎 Buscar marca'));
     const sc=h('div',{style:{...card(),marginBottom:14}});
-    const si=h('input',{type:'text',placeholder:'Brand ID (mín. 3 caracteres)...',style:{...inp(false),fontSize:15},onInput:e=>{S.searchBrand=e.target.value.toUpperCase();R();}});si.value=S.searchBrand;sc.appendChild(si);
+    const siWrap=h('div',{style:{position:'relative'}});
+    const si=h('input',{class:'searchbox',type:'text',placeholder:'Escribe el Brand ID (mín. 3 caracteres)...',style:{...inp(false),fontSize:15,padding:'12px 14px 12px 38px'},onInput:e=>{S.searchBrand=e.target.value.toUpperCase();R();}});si.value=S.searchBrand;
+    siWrap.appendChild(h('span',{style:{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',fontSize:15,color:'#9CA3AF',pointerEvents:'none'}},'🔎'));
+    siWrap.appendChild(si);
+    sc.appendChild(siWrap);
     ct.appendChild(sc);
-    if(S.searchBrand.length>=3){const res=S.reqs.filter(r=>r.brandId&&r.brandId.includes(S.searchBrand)&&r.status!=='rejected');if(res.length===0)sc.appendChild(h('div',{style:{marginTop:10,color:'#9CA3AF',fontSize:13}},'Sin resultados para "'+S.searchBrand+'"'));else{const rc=h('div',{style:card()});rc.appendChild(h('div',{style:{fontWeight:700,marginBottom:10,fontSize:13}},res.length+' solicitudes encontradas para '+S.searchBrand));rc.appendChild(buildTable(['Brand','País','Farmer','Palanca','Det.','Monto','Co-inv.','Fecha','Estado'],res.map(r=>[r.brandId,r.pais,nE(r.farmer),r.palanca==='free_trial'?'FT':'%',r.palanca==='free_trial'?r.semanas+'s':r.porcentaje+'%',fN(r.montoCampana),Object.assign(h('span',{style:{color:OR,fontWeight:700}}),{textContent:fN(r.coinversionAmount)}),fDsol(r),badge(r.status)])));ct.appendChild(rc);}}
+    if(S.searchBrand.length<3){
+      ct.appendChild(h('div',{style:{...card(),textAlign:'center',padding:'40px 20px',color:'#9CA3AF'}},[
+        h('div',{style:{fontSize:32,marginBottom:8}},'🔎'),
+        h('div',{style:{fontSize:13}},'Escribe al menos 3 caracteres del Brand ID para buscar.')
+      ]));
+    } else {
+      const res=S.reqs.filter(r=>r.brandId&&r.brandId.includes(S.searchBrand)&&r.status!=='rejected');
+      if(res.length===0){
+        ct.appendChild(h('div',{style:{...card(),textAlign:'center',padding:'40px 20px',color:'#9CA3AF'}},[
+          h('div',{style:{fontSize:32,marginBottom:8}},'🚫'),
+          h('div',{style:{fontSize:13}},'Sin resultados para "'+S.searchBrand+'"')
+        ]));
+      } else {
+        const rc=h('div',{style:card()});
+        rc.appendChild(h('div',{style:{fontWeight:700,marginBottom:10,fontSize:13}},res.length+' solicitud'+(res.length>1?'es':'')+' encontrada'+(res.length>1?'s':'')+' para "'+S.searchBrand+'"'));
+        rc.appendChild(buildTable(['Brand','País','Farmer','Palanca','Det.','Monto','Co-inv.','Fecha','Estado'],res.map(r=>[r.brandId,r.pais,nE(r.farmer),r.palanca==='free_trial'?'FT':'%',r.palanca==='free_trial'?r.semanas+'s':r.porcentaje+'%',fN(r.montoCampana),Object.assign(h('span',{style:{color:OR,fontWeight:700}}),{textContent:fN(r.coinversionAmount)}),fDsol(r),badge(r.status)])));
+        ct.appendChild(rc);
+      }
+    }
   }
 
 
