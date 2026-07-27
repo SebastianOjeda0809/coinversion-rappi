@@ -1228,8 +1228,8 @@ function buildAdmin(){
       {l:'Total solicitudes',v:S.reqs.length,c:'#374151'},
       {l:'Aprobadas',v:appr.length,c:'#10B981'},
       {l:'En revisión',v:pend.length+' sol.',c:'#D97706'},
-      {l:'Descuentos',v:totPct.length+' · '+fN(montoPct),c:'#3B82F6',sm:true},
-      {l:'Free Trial',v:totFT.length+' · '+fN(montoFT),c:'#8B5CF6',sm:true}
+      {l:'Descuentos',v:totPct.length+' · $'+fN(montoPct),c:'#3B82F6',sm:true},
+      {l:'Free Trial',v:totFT.length+' · $'+fN(montoFT),c:'#8B5CF6',sm:true}
     ].forEach(function(k){
       var kc=h('div',{style:{background:'#fff',borderRadius:12,padding:'14px 16px',border:'1px solid #E5E7EB'}});
       kc.appendChild(h('div',{style:{fontSize:10,color:'#6B7280',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:6}},k.l));
@@ -1261,7 +1261,7 @@ function buildAdmin(){
       ct.appendChild(h('div',{style:{...card(),textAlign:'center',padding:'20px 0',color:'#9CA3AF'}},'Aún no hay aprobaciones.'));
     } else {
       var byPais={};
-      appr.forEach(function(r){var p=r.pais||'Sin país';if(!byPais[p])byPais[p]={reqs:[],monto:0};byPais[p].reqs.push(r);byPais[p].monto+=(r.coinversionAmount||0);});
+      appr.forEach(function(r){var p=r.pais||'Sin país';if(!byPais[p])byPais[p]={reqs:[],monto:0};byPais[p].reqs.push(r);byPais[p].monto+=(r.coinversionAmount||r.montoCampana||0);});
       var paisRows=Object.keys(byPais).map(function(p){return {pais:p,reqs:byPais[p].reqs,count:byPais[p].reqs.length,monto:byPais[p].monto};}).sort(function(a,b){return b.count-a.count;});
       var maxCount=paisRows[0]?(paisRows[0].count||1):1;
 
@@ -1283,7 +1283,7 @@ function buildAdmin(){
         ch.appendChild(ci);
 
         var mets=h('div',{style:{display:'flex',gap:14,flexShrink:0}});
-        [{l:'Aprobadas',v:pr.count,c:'#10B981'},{l:'Monto',v:fN(pr.monto),c:'#0F766E'}].forEach(function(m){
+        [{l:'Aprobadas',v:pr.count,c:'#10B981'},{l:'Monto',v:'$'+fN(pr.monto),c:'#0F766E'}].forEach(function(m){
           var mb=h('div',{style:{textAlign:'center',minWidth:56}});
           mb.appendChild(h('div',{style:{fontSize:16,fontWeight:800,color:m.c}},String(m.v)));
           mb.appendChild(h('div',{style:{fontSize:9,color:'#9CA3AF',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.03em',marginTop:2}},m.l));
@@ -1302,7 +1302,7 @@ function buildAdmin(){
             var l=(r.lider||'Sin líder').replace('@rappi.com','');
             if(!bySup[l])bySup[l]={count:0,monto:0,pctCount:0,ftCount:0};
             bySup[l].count++;
-            bySup[l].monto+=(r.coinversionAmount||0);
+            bySup[l].monto+=(r.coinversionAmount||r.montoCampana||0);
             if(r.palanca==='porcentaje')bySup[l].pctCount++;
             else if(r.palanca==='free_trial')bySup[l].ftCount++;
           });
@@ -1328,7 +1328,7 @@ function buildAdmin(){
               if(s.ftCount>0)fbt.appendChild(h('div',{style:{width:(s.ftCount/s.count*100)+'%',height:'100%',background:'#8B5CF6'}}));
             }
             frow.appendChild(fbt);
-            [{v:s.pctCount,l:'desc.',c:'#3B82F6'},{v:s.ftCount,l:'FT',c:'#8B5CF6'},{v:fN(s.monto),l:'monto',c:'#0F766E'}].forEach(function(st){
+            [{v:s.pctCount,l:'desc.',c:'#3B82F6'},{v:s.ftCount,l:'FT',c:'#8B5CF6'},{v:'$'+fN(s.monto),l:'monto',c:'#0F766E'}].forEach(function(st){
               var sb=h('div',{style:{textAlign:'right',minWidth:52,flexShrink:0}});
               sb.appendChild(h('div',{style:{fontSize:12,fontWeight:700,color:st.c}},String(st.v)));
               sb.appendChild(h('div',{style:{fontSize:9,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.03em'}},st.l));
@@ -1340,11 +1340,11 @@ function buildAdmin(){
           // Descuentos vs Free Trial dentro de este país
           var pctInPais=pr.reqs.filter(function(r){return r.palanca==='porcentaje';});
           var ftInPais=pr.reqs.filter(function(r){return r.palanca==='free_trial';});
-          var montoPctPais=pctInPais.reduce(function(s,r){return s+(r.coinversionAmount||0);},0);
-          var montoFtPais=ftInPais.reduce(function(s,r){return s+(r.coinversionAmount||0);},0);
+          var montoPctPais=pctInPais.reduce(function(s,r){return s+(r.coinversionAmount||r.montoCampana||0);},0);
+          var montoFtPais=ftInPais.reduce(function(s,r){return s+(r.coinversionAmount||r.montoCampana||0);},0);
           var palRow=h('div',{style:{marginTop:12,paddingTop:12,borderTop:'1px solid #F3F4F6',display:'flex',gap:20,flexWrap:'wrap',fontSize:12,color:'#6B7280'}});
-          palRow.appendChild(h('span',{},'📊 Descuentos: '+pctInPais.length+' · '+fN(montoPctPais)));
-          palRow.appendChild(h('span',{},'🎁 Free Trial: '+ftInPais.length+' · '+fN(montoFtPais)));
+          palRow.appendChild(h('span',{},'📊 Descuentos: '+pctInPais.length+' · $'+fN(montoPctPais)));
+          palRow.appendChild(h('span',{},'🎁 Free Trial: '+ftInPais.length+' · $'+fN(montoFtPais)));
           det.appendChild(palRow);
 
           cardEl.appendChild(det);
