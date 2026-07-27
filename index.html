@@ -1255,10 +1255,15 @@ function buildAdmin(){
       ct.appendChild(syncBox);
     }
 
+    // Layout en dos columnas: países a la izquierda, actividad de farmers a la derecha
+    var dashRow=h('div',{style:{display:'flex',gap:16,alignItems:'flex-start',flexWrap:'wrap'}});
+    var leftCol=h('div',{style:{flex:'1 1 480px',minWidth:320}});
+    var rightCol=h('div',{style:{flex:'1 1 380px',minWidth:300}});
+
     // Aprobaciones por país — tarjetas clickeables, mismo patrón que Supervisores
-    ct.appendChild(h('div',{style:{fontSize:13,fontWeight:700,color:'#374151',marginBottom:10}},'📊 Aprobaciones por país'));
+    leftCol.appendChild(h('div',{style:{fontSize:13,fontWeight:700,color:'#374151',marginBottom:10}},'📊 Aprobaciones por país'));
     if(appr.length===0){
-      ct.appendChild(h('div',{style:{...card(),textAlign:'center',padding:'20px 0',color:'#9CA3AF'}},'Aún no hay aprobaciones.'));
+      leftCol.appendChild(h('div',{style:{...card(),textAlign:'center',padding:'20px 0',color:'#9CA3AF'}},'Aún no hay aprobaciones.'));
     } else {
       var byPais={};
       appr.forEach(function(r){var p=r.pais||'Sin país';if(!byPais[p])byPais[p]={reqs:[],monto:0};byPais[p].reqs.push(r);byPais[p].monto+=(r.coinversionAmount||r.montoCampana||0);});
@@ -1351,8 +1356,73 @@ function buildAdmin(){
         }
         gridPais.appendChild(cardEl);
       });
-      ct.appendChild(gridPais);
+      leftCol.appendChild(gridPais);
     }
+    dashRow.appendChild(leftCol);
+
+    // Actividad de farmers — sin actividad reciente vs. exceso de volumen
+    var activos=HC.filter(function(r){return r.pa!=='Churn'&&r.pa!=='Nuevo';});
+    var nowMs=Date.now();
+    var farmerStats=activos.map(function(f){
+      var email=nE(f.fa);
+      var freqs=S.reqs.filter(function(r){return nE(r.farmer)===email;});
+      var lastDate=null;
+      freqs.forEach(function(r){
+        var d=r.createdAt||r.fechaInicio;
+        if(!d)return;
+        var dt=new Date(d);
+        if(!isNaN(dt)&&(!lastDate||dt>lastDate))lastDate=dt;
+      });
+      var days=lastDate?Math.floor((nowMs-lastDate.getTime())/86400000):null;
+      return {email:email,lider:(f.l||'').replace('@rappi.com',''),count:freqs.length,days:days};
+    });
+
+    var sinActividad=farmerStats.slice().sort(function(a,b){
+      if(a.days===null&&b.days===null)return a.email.localeCompare(b.email);
+      if(a.days===null)return -1;
+      if(b.days===null)return 1;
+      return b.days-a.days;
+    }).slice(0,8);
+
+    var exceso=farmerStats.slice().filter(function(f){return f.count>0;}).sort(function(a,b){return b.count-a.count;}).slice(0,6);
+
+    var actCard=h('div',{style:card()});
+    actCard.appendChild(h('div',{style:{fontWeight:700,fontSize:13,marginBottom:2}},'🚨 Farmers sin actividad reciente'));
+    actCard.appendChild(h('div',{style:{fontSize:11,color:'#9CA3AF',marginBottom:12}},'Ordenados por más días sin enviar una solicitud'));
+    if(sinActividad.length===0){
+      actCard.appendChild(h('div',{style:{fontSize:12,color:'#9CA3AF',marginBottom:14}},'Sin datos de HC para calcular esto.'));
+    } else {
+      sinActividad.forEach(function(f,i){
+        var sev=f.days===null?'#EF4444':f.days>=60?'#EF4444':f.days>=30?'#F59E0B':'#9CA3AF';
+        var sevBg=f.days===null?'#FEE2E2':f.days>=60?'#FEE2E2':f.days>=30?'#FEF3C7':'#F3F4F6';
+        var frow=h('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'7px 8px',borderRadius:8,background:i%2===0?'#FAFAFA':'#fff',marginBottom:2}});
+        var fi=h('div',{style:{flex:1,minWidth:0}});
+        fi.appendChild(h('div',{style:{fontSize:12,fontWeight:600,color:'#111827',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},f.email));
+        fi.appendChild(h('div',{style:{fontSize:10,color:'#9CA3AF',marginTop:1}},f.lider));
+        frow.appendChild(fi);
+        frow.appendChild(h('span',{style:{background:sevBg,color:sev,borderRadius:8,padding:'3px 9px',fontSize:11,fontWeight:700,flexShrink:0,whiteSpace:'nowrap'}},f.days===null?'Nunca':f.days+' días'));
+        actCard.appendChild(frow);
+      });
+    }
+
+    actCard.appendChild(h('div',{style:{fontWeight:700,fontSize:13,margin:'18px 0 2px'}},'🔥 Mayor volumen de solicitudes'));
+    actCard.appendChild(h('div',{style:{fontSize:11,color:'#9CA3AF',marginBottom:12}},'Revisar si el ritmo de envío es normal'));
+    if(exceso.length===0){
+      actCard.appendChild(h('div',{style:{fontSize:12,color:'#9CA3AF'}},'Aún no hay solicitudes.'));
+    } else {
+      exceso.forEach(function(f,i){
+        var frow=h('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'7px 8px',borderRadius:8,background:i%2===0?'#FAFAFA':'#fff',marginBottom:2}});
+        var fi=h('div',{style:{flex:1,minWidth:0}});
+        fi.appendChild(h('div',{style:{fontSize:12,fontWeight:600,color:'#111827',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},f.email));
+        fi.appendChild(h('div',{style:{fontSize:10,color:'#9CA3AF',marginTop:1}},f.lider));
+        frow.appendChild(fi);
+        frow.appendChild(h('span',{style:{background:'#EDE9FE',color:'#5B21B6',borderRadius:8,padding:'3px 9px',fontSize:11,fontWeight:700,flexShrink:0}},f.count+' sol.'));
+        actCard.appendChild(frow);
+      });
+    }
+    rightCol.appendChild(actCard);
+    dashRow.appendChild(rightCol);
+    ct.appendChild(dashRow);
   }
 
   if(S.adminTab==='pend'){
