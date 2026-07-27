@@ -1864,14 +1864,15 @@ function buildAdmin(){
 // INICIO
 // ══════════════════════════════════════════════════
 S.loginEmail='';S.loginStep=null;
+// El selector de rol es una pantalla estática que no necesita datos — se
+// muestra al instante en vez de esperar a que baje toda la base de
+// solicitudes desde Apps Script (eso podía tardar varios segundos).
+render();
 (async function init(){
-  var sp='display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:12px';
-  var sp2='width:48px;height:48px;border:4px solid #FF441F;border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite';
-  document.getElementById('app').innerHTML='<div style="'+sp+'"><div style="'+sp2+'"></div><div style="color:#666;font-size:13px;font-family:sans-serif;">Cargando datos...</div><style>@keyframes spin{to{transform:rotate(360deg)}}</style></div>';
   const remote=await apiGet();
   // apiGet() ya hizo el merge y guardó en S.reqs — NO pisar con remote.reqs crudo
   if(remote&&remote.budget)S.budget=remote.budget;
-  render();
+  if(!_inputActivo()&&!document.getElementById('cierreWrap'))render();
 })();
 
 // Auto-refresh: evita que supervisores/farmers vean datos desactualizados
