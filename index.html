@@ -1382,16 +1382,17 @@ function buildAdmin(){
       if(a.days===null)return -1;
       if(b.days===null)return 1;
       return b.days-a.days;
-    }).slice(0,8);
+    });
 
-    var exceso=farmerStats.slice().filter(function(f){return f.count>0;}).sort(function(a,b){return b.count-a.count;}).slice(0,6);
+    var exceso=farmerStats.slice().filter(function(f){return f.count>0;}).sort(function(a,b){return b.count-a.count;});
 
     var actCard=h('div',{style:card()});
-    actCard.appendChild(h('div',{style:{fontWeight:700,fontSize:13,marginBottom:2}},'🚨 Farmers sin actividad reciente'));
+    actCard.appendChild(h('div',{style:{fontWeight:700,fontSize:13,marginBottom:2}},'🚨 Farmers sin actividad reciente ('+sinActividad.length+')'));
     actCard.appendChild(h('div',{style:{fontSize:11,color:'#9CA3AF',marginBottom:12}},'Ordenados por más días sin enviar una solicitud'));
     if(sinActividad.length===0){
       actCard.appendChild(h('div',{style:{fontSize:12,color:'#9CA3AF',marginBottom:14}},'Sin datos de HC para calcular esto.'));
     } else {
+      var sinActBox=h('div',{style:{maxHeight:320,overflowY:'auto',paddingRight:4}});
       sinActividad.forEach(function(f,i){
         var sev=f.days===null?'#EF4444':f.days>=60?'#EF4444':f.days>=30?'#F59E0B':'#9CA3AF';
         var sevBg=f.days===null?'#FEE2E2':f.days>=60?'#FEE2E2':f.days>=30?'#FEF3C7':'#F3F4F6';
@@ -1401,15 +1402,17 @@ function buildAdmin(){
         fi.appendChild(h('div',{style:{fontSize:10,color:'#9CA3AF',marginTop:1}},f.lider));
         frow.appendChild(fi);
         frow.appendChild(h('span',{style:{background:sevBg,color:sev,borderRadius:8,padding:'3px 9px',fontSize:11,fontWeight:700,flexShrink:0,whiteSpace:'nowrap'}},f.days===null?'Nunca':f.days+' días'));
-        actCard.appendChild(frow);
+        sinActBox.appendChild(frow);
       });
+      actCard.appendChild(sinActBox);
     }
 
-    actCard.appendChild(h('div',{style:{fontWeight:700,fontSize:13,margin:'18px 0 2px'}},'🔥 Mayor volumen de solicitudes'));
+    actCard.appendChild(h('div',{style:{fontWeight:700,fontSize:13,margin:'18px 0 2px'}},'🔥 Mayor volumen de solicitudes ('+exceso.length+')'));
     actCard.appendChild(h('div',{style:{fontSize:11,color:'#9CA3AF',marginBottom:12}},'Revisar si el ritmo de envío es normal'));
     if(exceso.length===0){
       actCard.appendChild(h('div',{style:{fontSize:12,color:'#9CA3AF'}},'Aún no hay solicitudes.'));
     } else {
+      var excesoBox=h('div',{style:{maxHeight:320,overflowY:'auto',paddingRight:4}});
       exceso.forEach(function(f,i){
         var frow=h('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'7px 8px',borderRadius:8,background:i%2===0?'#FAFAFA':'#fff',marginBottom:2}});
         var fi=h('div',{style:{flex:1,minWidth:0}});
@@ -1417,8 +1420,9 @@ function buildAdmin(){
         fi.appendChild(h('div',{style:{fontSize:10,color:'#9CA3AF',marginTop:1}},f.lider));
         frow.appendChild(fi);
         frow.appendChild(h('span',{style:{background:'#EDE9FE',color:'#5B21B6',borderRadius:8,padding:'3px 9px',fontSize:11,fontWeight:700,flexShrink:0}},f.count+' sol.'));
-        actCard.appendChild(frow);
+        excesoBox.appendChild(frow);
       });
+      actCard.appendChild(excesoBox);
     }
     rightCol.appendChild(actCard);
     dashRow.appendChild(rightCol);
