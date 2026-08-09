@@ -256,16 +256,16 @@ const getCC=p=>{const k=(p||'').toUpperCase().trim();return CC[k]||k.substring(0
 const sg=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 // Normalización global de emails — siempre retorna solo nombre.apellido sin @rappi.com
 const nE=function(f){var s=(f||'').toLowerCase().trim();return s.includes('@')?s.split('@')[0]:s;};
-// Filtra solicitudes/HC al country manager logueado, salvo que tenga
-// activado "Ver todo". Un líder sin CM asignado queda visible para todos
-// (fail-open) para que nada se pierda de las colas por falta de mapeo.
+// Filtra solicitudes/HC al country manager logueado — estricto: solo ve lo
+// suyo. "Cubrir vacaciones" (S.verTodoAdmin) es la única forma de ver todo.
+// Un líder sin CM asignado en CM_BY_LIDER queda fuera hasta que se le
+// asigne un dueño.
 function esMiLider(liderEmail){
   if(S.verTodoAdmin||!S.adminEmail)return true;
   var raw=(liderEmail||'').toLowerCase().trim();
-  if(!raw)return true;
+  if(!raw)return false;
   var full=raw.includes('@')?raw:raw+'@rappi.com';
-  var cm=CM_BY_LIDER[full];
-  return !cm||cm===S.adminEmail;
+  return CM_BY_LIDER[full]===S.adminEmail;
 }
 function misSolicitudes(reqs){
   if(S.verTodoAdmin||!S.adminEmail)return reqs;
@@ -1233,7 +1233,7 @@ function buildAdmin(){
   const wrap=h('div',{style:{minHeight:'100vh',background:'#F3F4F6'}});
   wrap.appendChild(topBar('#111827','Co-Inversión Rappi','ADMIN',S.user,pend.length));
   var _ab=h('div',{style:{background:'#0a0f1a',padding:'6px 20px',display:'flex',justifyContent:'flex-end',alignItems:'center',gap:10}});
-  var _verTodoBtn=h('button',{style:{background:S.verTodoAdmin?'#374151':'rgba(255,255,255,0.12)',color:'#fff',border:'none',borderRadius:8,padding:'5px 13px',fontSize:11,fontWeight:700,cursor:'pointer'},onClick:function(){S.verTodoAdmin=!S.verTodoAdmin;R();}},S.verTodoAdmin?'👁 Viendo todo — clic para ver solo lo mío':'👁 Mi equipo — clic para ver todo');
+  var _verTodoBtn=h('button',{style:{background:S.verTodoAdmin?'#B45309':'rgba(255,255,255,0.12)',color:'#fff',border:'none',borderRadius:8,padding:'5px 13px',fontSize:11,fontWeight:700,cursor:'pointer'},onClick:function(){S.verTodoAdmin=!S.verTodoAdmin;R();}},S.verTodoAdmin?'🏖️ Cubriendo vacaciones — clic para volver a mi equipo':'🏖️ Cubrir vacaciones');
   _ab.appendChild(_verTodoBtn);
   var _abbtn=h('button',{style:{background:'#FF441F',color:'#fff',border:'none',borderRadius:8,padding:'5px 13px',fontSize:11,fontWeight:700,cursor:'pointer'},onClick:function(){abrirCierre(null,'admin');}},['Cierre ',CIERRE_LABEL,' — LATAM']);_ab.appendChild(_abbtn);wrap.appendChild(_ab);
   wrap.appendChild(tabBar('#1F2937',[['dash','Dashboard'],['supervisores','👥 Supervisores'],['pend','Pendientes'+(pend.length?' ('+pend.length+')':'')],['aprobadas','✅ Aprobadas'+(appr.length?' ('+appr.length+')':'')],['hist','Historial'],['buscar','Buscar marca']],S.adminTab,k=>{S.adminTab=k;R();}));
