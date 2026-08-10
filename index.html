@@ -1350,8 +1350,11 @@ function buildAdmin(){
           // Supervisores dentro de este país
           var bySup={};
           pr.reqs.forEach(function(r){
-            var lRaw=liderActualDeFarmer(r.farmer)||r.lider;
-            var l=lRaw?nE(lRaw):'Sin líder';
+            // Si el farmer ya no está en el HC (dejó la empresa), no se le
+            // atribuye al líder histórico — eso confundía (ej. un supervisor
+            // que ya cambió de país seguía apareciendo con datos viejos).
+            var liderVigente=liderActualDeFarmer(r.farmer);
+            var l=liderVigente?nE(liderVigente):'⚠️ Farmer fuera del HC';
             if(!bySup[l])bySup[l]={count:0,monto:0,pctCount:0,ftCount:0};
             bySup[l].count++;
             bySup[l].monto+=(r.coinversionAmount||r.montoCampana||0);
