@@ -1158,8 +1158,10 @@ function buildSupervisor(){
 // ─── FUNCIONES DE APROBACIÓN ─────────────────────────────────────────────────
 
 function aprobarGrupoCSV(palanca){
-  // Solo aprueba pendientes del palanca indicado — NUNCA excepciones sin sup
-  var grupo=S.reqs.filter(function(r){
+  // Solo aprueba pendientes del palanca indicado, y SOLO dentro del equipo
+  // del admin logueado — nunca del sistema completo (a menos que esté
+  // cubriendo vacaciones).
+  var grupo=misSolicitudes(S.reqs).filter(function(r){
     return (r.status==='pending'||r.status==='pending_admin')&&r.palanca===palanca&&!(r.exc&&r.status==='pending');
   });
   if(grupo.length===0)return;
@@ -1196,7 +1198,7 @@ function aprobarGrupoCSV(palanca){
 }
 
 function aprobarTanda(){
-  var pend=S.reqs.filter(function(r){return r.status==='pending'||r.status==='pending_admin';});
+  var pend=misSolicitudes(S.reqs).filter(function(r){return r.status==='pending'||r.status==='pending_admin';});
   if(pend.length===0)return;
   var ahora=new Date().toISOString();
   var aprobadas=pend.map(function(r){return Object.assign({},r,{status:'approved',reviewedAt:ahora});});
