@@ -37,13 +37,12 @@ input[type=number]::-webkit-inner-spin-button{opacity:1}
 const OR='#FF441F';
 const APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbxE6SnqcfMlOFs9V_UjrdsygbT82POAs4XlAXeOSLpS1e9WvCX3bJk041d5rJKyFOFa/exec';
 const SUP_PINS={'ana.farias@rappi.com':'1000','anthony.garcia@rappi.com':'1001','camilo.ospina@rappi.com':'1002','carlos.oliveira@rappi.com':'1003','fabian.ayala@rappi.com':'1004','gabriela.calderon@rappi.com':'1005','johan.vargas@rappi.com':'1006','juan.casallas@rappi.com':'1007','juan.marin@rappi.com':'1008','karol.olaya@rappi.com':'1009','laura.mora@rappi.com':'1010','manuela.moreno@rappi.com':'1011','oscar.pedraza@rappi.com':'1012','paola.blanco@rappi.com':'1013','paula.segura@rappi.com':'1014','rafael.carreno@rappi.com':'1015','tatiana.aros@rappi.com':'1016'};
-// Perfiles de administrador (country manager) y su clave. Cuarto perfil se
-// suma más adelante — solo hay que agregar una entrada aquí.
-const ADMIN_PWDS={'jhon.ojeda@rappi.com':'Joaquin 0809','juan.longas@rappi.com':'Colombia2026','johan.vargas@rappi.com':'Andina2026'};
+// Perfiles de administrador (country manager) y su clave.
+const ADMIN_PWDS={'jhon.ojeda@rappi.com':'Joaquin 0809','juan.longas@rappi.com':'Colombia2026','johan.vargas@rappi.com':'Andina2026','angela.rozo@rappi.com':'Mexico20206'};
 // Qué country manager le pertenece cada líder/supervisor (según HC Agosto
 // 2026). Un líder sin entrada aquí queda visible para TODOS los admins por
 // seguridad, en vez de desaparecer de todas las colas.
-const CM_BY_LIDER={'ana.farias@rappi.com':'jhon.ojeda@rappi.com','angela.rozo@rappi.com':'jhon.ojeda@rappi.com','anthony.garcia@rappi.com':'johan.vargas@rappi.com','camilo.ospina@rappi.com':'juan.longas@rappi.com','fabian.ayala@rappi.com':'jhon.ojeda@rappi.com','gabriela.calderon@rappi.com':'jhon.ojeda@rappi.com','jhon.ojeda@rappi.com':'jhon.ojeda@rappi.com','juan.longas@rappi.com':'juan.longas@rappi.com','juan.marin@rappi.com':'johan.vargas@rappi.com','laura.mora@rappi.com':'juan.longas@rappi.com','manuela.moreno@rappi.com':'jhon.ojeda@rappi.com','paola.blanco@rappi.com':'jhon.ojeda@rappi.com','paula.segura@rappi.com':'jhon.ojeda@rappi.com','rafael.carreno@rappi.com':'jhon.ojeda@rappi.com','tatiana.aros@rappi.com':'jhon.ojeda@rappi.com',
+const CM_BY_LIDER={'ana.farias@rappi.com':'angela.rozo@rappi.com','angela.rozo@rappi.com':'angela.rozo@rappi.com','anthony.garcia@rappi.com':'johan.vargas@rappi.com','camilo.ospina@rappi.com':'juan.longas@rappi.com','fabian.ayala@rappi.com':'jhon.ojeda@rappi.com','gabriela.calderon@rappi.com':'angela.rozo@rappi.com','jhon.ojeda@rappi.com':'jhon.ojeda@rappi.com','juan.longas@rappi.com':'juan.longas@rappi.com','juan.marin@rappi.com':'johan.vargas@rappi.com','laura.mora@rappi.com':'juan.longas@rappi.com','manuela.moreno@rappi.com':'angela.rozo@rappi.com','paola.blanco@rappi.com':'jhon.ojeda@rappi.com','paula.segura@rappi.com':'angela.rozo@rappi.com','rafael.carreno@rappi.com':'angela.rozo@rappi.com','tatiana.aros@rappi.com':'angela.rozo@rappi.com',
 // Líderes sin country manager propio en el HC Agosto 2026 — por defecto
 // caen a jhon.ojeda@rappi.com hasta que se les asigne uno explícito.
 'carlos.oliveira@rappi.com':'jhon.ojeda@rappi.com','johan.vargas@rappi.com':'jhon.ojeda@rappi.com','juan.casallas@rappi.com':'jhon.ojeda@rappi.com','karol.olaya@rappi.com':'jhon.ojeda@rappi.com','oscar.pedraza@rappi.com':'jhon.ojeda@rappi.com'};
@@ -1263,17 +1262,25 @@ function buildAdmin(){
 
   if(S.adminTab==='dash'){
     if(typeof S.selPais==='undefined')S.selPais=null;
-    var totPct=misReqs.filter(function(r){return r.palanca==='porcentaje';});
-    var totFT=misReqs.filter(function(r){return r.palanca==='free_trial';});
+    // jhon.ojeda pidió ver el Dashboard con datos de TODOS los países aunque
+    // solo apruebe AR/CL/UY — excepción exclusiva de esta pestaña, para este
+    // admin. El resto de pestañas (Pendientes, Aprobadas, etc.) siguen
+    // respetando su alcance normal.
+    var dashGlobal=(S.adminEmail==='jhon.ojeda@rappi.com');
+    var dashReqs=dashGlobal?S.reqs:misReqs;
+    var dashAppr=dashReqs.filter(function(r){return r.status==='approved';});
+    var dashPend=dashReqs.filter(function(r){return (r.status==='pending'||r.status==='pending_admin')&&!(r.exc&&r.status==='pending');});
+    var totPct=dashReqs.filter(function(r){return r.palanca==='porcentaje';});
+    var totFT=dashReqs.filter(function(r){return r.palanca==='free_trial';});
     var montoPct=totPct.reduce(function(s,r){return s+(r.montoCampana||0);},0);
     var montoFT=totFT.reduce(function(s,r){return s+(r.montoCampana||0);},0);
 
     // KPIs — mismo estilo que la pestaña Supervisores
     var kRow=h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(150px,1fr))',gap:10,marginBottom:18}});
     [
-      {l:'Total solicitudes',v:misReqs.length,c:'#374151'},
-      {l:'Aprobadas',v:appr.length,c:'#10B981'},
-      {l:'En revisión',v:pend.length+' sol.',c:'#D97706'},
+      {l:'Total solicitudes',v:dashReqs.length,c:'#374151'},
+      {l:'Aprobadas',v:dashAppr.length,c:'#10B981'},
+      {l:'En revisión',v:dashPend.length+' sol.',c:'#D97706'},
       {l:'Descuentos',v:totPct.length+' · $'+fN(montoPct),c:'#3B82F6',sm:true},
       {l:'Free Trial',v:totFT.length+' · $'+fN(montoFT),c:'#8B5CF6',sm:true}
     ].forEach(function(k){
@@ -1308,11 +1315,11 @@ function buildAdmin(){
 
     // Aprobaciones por país — tarjetas clickeables, mismo patrón que Supervisores
     leftCol.appendChild(h('div',{style:{fontSize:13,fontWeight:700,color:'#374151',marginBottom:10}},'📊 Aprobaciones por país'));
-    if(appr.length===0){
+    if(dashAppr.length===0){
       leftCol.appendChild(h('div',{style:{...card(),textAlign:'center',padding:'20px 0',color:'#9CA3AF'}},'Aún no hay aprobaciones.'));
     } else {
       var byPais={};
-      appr.forEach(function(r){var p=r.pais||'Sin país';if(!byPais[p])byPais[p]={reqs:[],monto:0};byPais[p].reqs.push(r);byPais[p].monto+=(r.coinversionAmount||r.montoCampana||0);});
+      dashAppr.forEach(function(r){var p=r.pais||'Sin país';if(!byPais[p])byPais[p]={reqs:[],monto:0};byPais[p].reqs.push(r);byPais[p].monto+=(r.coinversionAmount||r.montoCampana||0);});
       var paisRows=Object.keys(byPais).map(function(p){return {pais:p,reqs:byPais[p].reqs,count:byPais[p].reqs.length,monto:byPais[p].monto};}).sort(function(a,b){return b.count-a.count;});
       var maxCount=paisRows[0]?(paisRows[0].count||1):1;
 
@@ -1411,7 +1418,7 @@ function buildAdmin(){
     dashRow.appendChild(leftCol);
 
     // Actividad de farmers — sin actividad reciente vs. exceso de volumen
-    var activos=HC.filter(function(r){return r.pa!=='Churn'&&r.pa!=='Nuevo'&&esMiLider(r.l);});
+    var activos=HC.filter(function(r){return r.pa!=='Churn'&&r.pa!=='Nuevo'&&(dashGlobal||esMiLider(r.l));});
     var nowMs=Date.now();
     var farmerStats=activos.map(function(f){
       var email=nE(f.fa);
