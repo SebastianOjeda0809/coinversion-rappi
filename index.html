@@ -1333,7 +1333,7 @@ function buildAdmin(){
   var _verTodoBtn=h('button',{style:{background:S.verTodoAdmin?'#B45309':'rgba(255,255,255,0.12)',color:'#fff',border:'none',borderRadius:8,padding:'5px 13px',fontSize:11,fontWeight:700,cursor:'pointer'},onClick:function(){S.verTodoAdmin=!S.verTodoAdmin;R();}},S.verTodoAdmin?'🏖️ Cubriendo vacaciones — clic para volver a mi equipo':'🏖️ Cubrir vacaciones');
   _ab.appendChild(_verTodoBtn);
   var _abbtn=h('button',{style:{background:'#FF441F',color:'#fff',border:'none',borderRadius:8,padding:'5px 13px',fontSize:11,fontWeight:700,cursor:'pointer'},onClick:function(){abrirCierre(null,'admin');}},['Cierre ',CIERRE_LABEL,' — LATAM']);_ab.appendChild(_abbtn);wrap.appendChild(_ab);
-  wrap.appendChild(tabBar('#1F2937',[['dash','Dashboard'],['supervisores','👥 Supervisores'],['pend','Pendientes'+(pend.length?' ('+pend.length+')':'')],['aprobadas','✅ Aprobadas'+(appr.length?' ('+appr.length+')':'')],['hist','Historial'],['buscar','Buscar marca']],S.adminTab,k=>{S.adminTab=k;R();}));
+  wrap.appendChild(tabBar('#1F2937',[['dash','Dashboard'],['supervisores','👥 Supervisores'],['pend','Pendientes'+(pend.length?' ('+pend.length+')':'')],['aprobadas','✅ Aprobadas'+(appr.length?' ('+appr.length+')':'')],['hist','Historial'],['buscar','Buscar marca'],['cierreAgosto','📅 Cierre Agosto']],S.adminTab,k=>{S.adminTab=k;R();}));
   if(stuck.length>0){var sb=h('div',{style:{background:'#FEF2F2',border:'2px solid #F87171',borderRadius:10,padding:'10px 14px',margin:'12px 20px 0',maxWidth:1100,display:'flex',alignItems:'center',gap:10}});sb.appendChild(icon('alert',20,'#B45309'));sb.appendChild(h('div',{style:{flex:1,fontSize:13,color:'#991B1B'}},[h('strong',{},stuck.length+' solicitud(es) atascadas en supervisor. '),'No aparecerán en los CSVs hasta que el supervisor apruebe la excepción.']));wrap.appendChild(sb);}
 
   const ct=h('div',{style:{padding:20,maxWidth:1100,margin:'0 auto'}});
@@ -1990,6 +1990,195 @@ function buildAdmin(){
       gridEl.appendChild(cardEl);
     });
     ct.appendChild(gridEl);
+  }
+
+  // ── TAB CIERRE DE AGOSTO ──────────────────────────────────────────
+  if(S.adminTab==='cierreAgosto'){
+    // jhon.ojeda ve el cierre de TODOS los países (rol de super admin,
+    // solo información — no aprueba nada desde acá). El resto de admins
+    // ve solo su alcance normal, igual que en Dashboard.
+    var cierreGlobal=(S.adminEmail==='jhon.ojeda@rappi.com');
+    var cierreReqs=cierreGlobal?S.reqs:misReqs;
+    var AGO_INICIO=new Date('2026-08-01T00:00:00');
+    var AGO_FIN=new Date('2026-08-31T23:59:59');
+    var reqsAgosto=cierreReqs.filter(function(r){
+      var f=r.createdAt;
+      if(!f)return false;
+      var d=new Date(f);
+      return !isNaN(d)&&d>=AGO_INICIO&&d<=AGO_FIN;
+    });
+
+    ct.appendChild(h('div',{style:{marginBottom:16}},[
+      h('div',{style:{fontSize:15,fontWeight:800,color:'#111827',marginBottom:2}},'📅 Cierre de Agosto 2026'),
+      h('div',{style:{fontSize:12,color:'#6B7280'}},'Solicitudes creadas del 1 al 31 de agosto'+(cierreGlobal?' — todos los países (vista de super administrador)':''))
+    ]));
+
+    if(reqsAgosto.length===0){
+      ct.appendChild(h('div',{style:{...card(),textAlign:'center',padding:'40px 0',color:'#9CA3AF'}},'No hay solicitudes de agosto en tu alcance.'));
+    } else {
+      var aprobadasAgo=reqsAgosto.filter(function(r){return r.status==='approved';});
+      var rechazadasAgo=reqsAgosto.filter(function(r){return r.status==='rejected';});
+      var pendAgo=reqsAgosto.filter(function(r){return r.status==='pending'||r.status==='pending_admin'||r.status==='pending_supervisor';});
+      var pctAgo=aprobadasAgo.filter(function(r){return r.palanca==='porcentaje';});
+      var ftAgo=aprobadasAgo.filter(function(r){return r.palanca==='free_trial';});
+      var montoPctAgo=pctAgo.reduce(function(s,r){return s+(r.coinversionAmount||r.montoCampana||0);},0);
+      var montoFtAgo=ftAgo.reduce(function(s,r){return s+(r.coinversionAmount||r.montoCampana||0);},0);
+      var vendorsAgoSet={};aprobadasAgo.forEach(function(r){if(r.brandId)vendorsAgoSet[r.brandId]=true;});
+      var tasaAprobAgo=reqsAgosto.length?Math.round(aprobadasAgo.length/reqsAgosto.length*100):0;
+
+      var kRowAgo=h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10,marginBottom:18}});
+      [
+        {l:'Solicitudes agosto',v:reqsAgosto.length,c:'#374151'},
+        {l:'Aprobadas',v:aprobadasAgo.length+' ('+tasaAprobAgo+'%)',c:'#10B981',sm:true},
+        {l:'Rechazadas',v:rechazadasAgo.length,c:'#EF4444'},
+        {l:'En proceso',v:pendAgo.length,c:'#D97706'},
+        {l:'Monto aprobado',v:'$'+fN(montoPctAgo+montoFtAgo),c:'#0F766E',sm:true},
+        {l:'Descuentos',v:pctAgo.length+' · $'+fN(montoPctAgo),c:'#3B82F6',sm:true},
+        {l:'Free Trial',v:ftAgo.length+' · $'+fN(montoFtAgo),c:'#8B5CF6',sm:true},
+        {l:'Marcas atendidas',v:Object.keys(vendorsAgoSet).length,c:'#D97706'}
+      ].forEach(function(k){
+        var kc=h('div',{style:{background:'#fff',borderRadius:12,padding:'14px 16px',border:'1px solid #E5E7EB'}});
+        kc.appendChild(h('div',{style:{fontSize:10,color:'#6B7280',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:6}},k.l));
+        kc.appendChild(h('div',{style:{fontSize:k.sm?15:24,fontWeight:800,color:k.c,lineHeight:1.2}},String(k.v)));
+        kRowAgo.appendChild(kc);
+      });
+      ct.appendChild(kRowAgo);
+
+      // Top performers (farmers) de agosto — ranking global dentro del alcance
+      var byFarmerAgo={};
+      reqsAgosto.forEach(function(r){
+        var email=nE(r.farmer);
+        if(!byFarmerAgo[email])byFarmerAgo[email]={total:0,aprobadas:0,monto:0,pct:0,ft:0,vendors:{}};
+        byFarmerAgo[email].total++;
+        if(r.status==='approved'){
+          byFarmerAgo[email].aprobadas++;
+          byFarmerAgo[email].monto+=(r.coinversionAmount||r.montoCampana||0);
+          if(r.brandId)byFarmerAgo[email].vendors[r.brandId]=true;
+          if(r.palanca==='porcentaje')byFarmerAgo[email].pct++;
+          else if(r.palanca==='free_trial')byFarmerAgo[email].ft++;
+        }
+      });
+      var farmerRankingAgo=Object.keys(byFarmerAgo).map(function(e){
+        var liderVigente=liderActualDeFarmer(e);
+        return {email:e,lider:liderVigente?nE(liderVigente):'—',total:byFarmerAgo[e].total,aprobadas:byFarmerAgo[e].aprobadas,monto:byFarmerAgo[e].monto,pct:byFarmerAgo[e].pct,ft:byFarmerAgo[e].ft,vendors:Object.keys(byFarmerAgo[e].vendors).length};
+      }).sort(function(a,b){return b.aprobadas-a.aprobadas||b.monto-a.monto;});
+      var topPerformersAgo=farmerRankingAgo.slice(0,10);
+
+      ct.appendChild(h('div',{style:{fontSize:13,fontWeight:700,color:'#374151',marginBottom:10,marginTop:4}},'🏆 Top performers de agosto (farmers)'));
+      if(topPerformersAgo.length===0){
+        ct.appendChild(h('div',{style:{...card(),textAlign:'center',padding:'20px 0',color:'#9CA3AF',marginBottom:18}},'Sin datos.'));
+      } else {
+        var topCardAgo=h('div',{style:{...card(),marginBottom:18}});
+        topPerformersAgo.forEach(function(f,i){
+          var frow=h('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'8px 8px',borderRadius:8,background:i%2===0?'#FAFAFA':'#fff',marginBottom:2,flexWrap:'wrap'}});
+          frow.appendChild(h('div',{style:{width:22,textAlign:'center',fontSize:12,fontWeight:800,color:i<3?'#FF441F':'#9CA3AF',flexShrink:0}},'#'+(i+1)));
+          var fi=h('div',{style:{width:170,minWidth:0,flexShrink:0}});
+          fi.appendChild(h('div',{style:{fontSize:12,fontWeight:600,color:'#111827',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},f.email));
+          fi.appendChild(h('div',{style:{fontSize:10,color:'#9CA3AF',marginTop:1}},f.lider));
+          frow.appendChild(fi);
+          var fbt=h('div',{style:{flex:1,minWidth:50,background:'#F3F4F6',borderRadius:4,height:12,overflow:'hidden',display:'flex'},title:'Descuentos: '+f.pct+' · Free Trial: '+f.ft});
+          if(f.aprobadas>0){
+            if(f.pct>0)fbt.appendChild(h('div',{style:{width:(f.pct/f.aprobadas*100)+'%',height:'100%',background:'#3B82F6'}}));
+            if(f.ft>0)fbt.appendChild(h('div',{style:{width:(f.ft/f.aprobadas*100)+'%',height:'100%',background:'#8B5CF6'}}));
+          }
+          frow.appendChild(fbt);
+          [{v:f.aprobadas,l:'aprob.',c:'#10B981'},{v:f.vendors,l:'marcas',c:'#D97706'},{v:'$'+fN(f.monto),l:'monto',c:'#0F766E'}].forEach(function(st){
+            var sb=h('div',{style:{textAlign:'right',minWidth:56,flexShrink:0}});
+            sb.appendChild(h('div',{style:{fontSize:12,fontWeight:700,color:st.c}},String(st.v)));
+            sb.appendChild(h('div',{style:{fontSize:9,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.03em'}},st.l));
+            frow.appendChild(sb);
+          });
+          topCardAgo.appendChild(frow);
+        });
+        ct.appendChild(topCardAgo);
+      }
+
+      // Funnel por supervisor → expandible a farmers, igual patrón que Supervisores
+      ct.appendChild(h('div',{style:{fontSize:13,fontWeight:700,color:'#374151',marginBottom:10}},'👥 Funnel por supervisor — agosto'));
+      if(typeof S.selSupAgosto==='undefined')S.selSupAgosto=null;
+      var supEmailsAgo=Object.keys(SUP_PINS);
+      var supDataAgo=supEmailsAgo.map(function(email){
+        var myTeamAllAgo=HC.filter(function(h){return h.l&&h.l.toLowerCase()===email.toLowerCase()&&h.pa!=='Churn'&&h.pa!=='Nuevo';});
+        var myTeamAgo=cierreGlobal?myTeamAllAgo:myTeamAllAgo.filter(function(h){return h.cm===S.adminEmail;});
+        var myEmAgo=new Set(myTeamAgo.map(function(h){return nE(h.fa);}));
+        var myReqsAgo=reqsAgosto.filter(function(r){return myEmAgo.has(nE(r.farmer));});
+        var myAprobadasAgo=myReqsAgo.filter(function(r){return r.status==='approved';});
+        var myMontoAgo=myAprobadasAgo.reduce(function(s,r){return s+(r.coinversionAmount||r.montoCampana||0);},0);
+        var myVendorsAgo={};myAprobadasAgo.forEach(function(r){if(r.brandId)myVendorsAgo[r.brandId]=true;});
+        return {email:email,name:email.replace('@rappi.com',''),teamSize:myTeamAgo.length,total:myReqsAgo.length,aprobadas:myAprobadasAgo.length,monto:myMontoAgo,vendors:Object.keys(myVendorsAgo).length,myTeam:myTeamAgo,myReqs:myReqsAgo};
+      }).filter(function(s){return s.total>0;}).sort(function(a,b){return b.aprobadas-a.aprobadas;});
+
+      if(supDataAgo.length===0){
+        ct.appendChild(h('div',{style:{...card(),textAlign:'center',padding:'20px 0',color:'#9CA3AF'}},'Sin solicitudes de agosto por supervisor en tu alcance.'));
+      } else {
+        var gridSupAgo=h('div',{style:{display:'flex',flexDirection:'column',gap:8}});
+        supDataAgo.forEach(function(s){
+          var isSel=S.selSupAgosto===s.email;
+          var cardElAgo=h('div',{class:'hoverlift',style:{background:'#fff',borderRadius:14,border:'2px solid '+(isSel?'#FF441F':'#E5E7EB'),overflow:'hidden'}});
+          var chh=h('div',{style:{padding:'14px 18px',display:'flex',alignItems:'center',gap:14,cursor:'pointer',flexWrap:'wrap'},onClick:function(){S.selSupAgosto=isSel?null:s.email;R();}});
+          var av=h('div',{style:{width:40,height:40,borderRadius:'50%',background:'#FEF2EE',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:14,color:'#FF441F',flexShrink:0}},s.name.charAt(0).toUpperCase());
+          chh.appendChild(av);
+          var ci=h('div',{style:{flex:1,minWidth:120}});
+          ci.appendChild(h('div',{style:{fontWeight:700,fontSize:13,color:'#111827'}},s.name));
+          ci.appendChild(h('div',{style:{fontSize:10,color:'#9CA3AF',marginTop:1}},s.teamSize+' farmers en su equipo'));
+          chh.appendChild(ci);
+          var mets=h('div',{style:{display:'flex',gap:12,flexShrink:0,flexWrap:'wrap'}});
+          [{l:'Solicitudes',v:s.total,c:'#111827'},{l:'Aprobadas',v:s.aprobadas,c:'#10B981'},{l:'Marcas',v:s.vendors,c:'#D97706'},{l:'Monto',v:s.monto>=1000000?'$'+(s.monto/1000000).toFixed(1)+'M':s.monto>=1000?'$'+(s.monto/1000).toFixed(0)+'K':'$'+s.monto,c:'#0F766E'}].forEach(function(m){
+            var mb=h('div',{style:{textAlign:'center',minWidth:52}});
+            mb.appendChild(h('div',{style:{fontSize:15,fontWeight:800,color:m.c}},String(m.v)));
+            mb.appendChild(h('div',{style:{fontSize:9,color:'#9CA3AF',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.03em',marginTop:2}},m.l));
+            mets.appendChild(mb);
+          });
+          chh.appendChild(mets);
+          chh.appendChild(h('span',{class:'chev',style:{color:'#9CA3AF',fontSize:14,marginLeft:6,display:'inline-block',transform:isSel?'rotate(180deg)':'rotate(0deg)'}},'▼'));
+          cardElAgo.appendChild(chh);
+
+          if(isSel){
+            var detAgo=h('div',{style:{borderTop:'1px solid #F3F4F6',padding:'16px 18px'}});
+            detAgo.appendChild(h('div',{style:{fontSize:12,fontWeight:700,color:'#374151',marginBottom:10,textTransform:'uppercase',letterSpacing:'0.04em'}},'Farmers — agosto'));
+            var leyendaAgo=h('div',{style:{display:'flex',gap:12,fontSize:11,color:'#6B7280',marginBottom:10}});
+            leyendaAgo.appendChild(h('span',{style:{display:'flex',alignItems:'center',gap:5}},[h('span',{style:{width:9,height:9,borderRadius:2,background:'#3B82F6',display:'inline-block'}}),'Descuentos']));
+            leyendaAgo.appendChild(h('span',{style:{display:'flex',alignItems:'center',gap:5}},[h('span',{style:{width:9,height:9,borderRadius:2,background:'#8B5CF6',display:'inline-block'}}),'Free Trial']));
+            detAgo.appendChild(leyendaAgo);
+
+            var fStatsAgo=s.myTeam.map(function(m){
+              var fe=nE(m.fa);
+              var fr=s.myReqs.filter(function(r){return nE(r.farmer)===fe;});
+              var fapr=fr.filter(function(r){return r.status==='approved';});
+              var fmonto=fapr.reduce(function(a,r){return a+(r.coinversionAmount||r.montoCampana||0);},0);
+              var fpct=fapr.filter(function(r){return r.palanca==='porcentaje';}).length;
+              var fft=fapr.filter(function(r){return r.palanca==='free_trial';}).length;
+              var fvendors={};fapr.forEach(function(r){if(r.brandId)fvendors[r.brandId]=true;});
+              return {name:fe,total:fr.length,aprobadas:fapr.length,monto:fmonto,pct:fpct,ft:fft,vendors:Object.keys(fvendors).length};
+            }).filter(function(f){return f.total>0;}).sort(function(a,b){return b.aprobadas-a.aprobadas;});
+
+            fStatsAgo.forEach(function(f,i){
+              var frow2=h('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'7px 8px',borderRadius:8,background:i%2===0?'#FAFAFA':'#fff',marginBottom:2,flexWrap:'wrap'}});
+              frow2.appendChild(h('div',{style:{width:20,textAlign:'center',fontSize:11,fontWeight:700,color:i<3?'#FF441F':'#9CA3AF',flexShrink:0}},'#'+(i+1)));
+              var fi2=h('div',{style:{width:150,minWidth:0,flexShrink:0}});
+              fi2.appendChild(h('div',{style:{fontSize:12,fontWeight:600,color:'#111827',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},f.name));
+              frow2.appendChild(fi2);
+              var fbt2=h('div',{style:{flex:1,minWidth:50,background:'#F3F4F6',borderRadius:4,height:10,overflow:'hidden',display:'flex'},title:'Descuentos: '+f.pct+' · Free Trial: '+f.ft});
+              if(f.aprobadas>0){
+                if(f.pct>0)fbt2.appendChild(h('div',{style:{width:(f.pct/f.aprobadas*100)+'%',height:'100%',background:'#3B82F6'}}));
+                if(f.ft>0)fbt2.appendChild(h('div',{style:{width:(f.ft/f.aprobadas*100)+'%',height:'100%',background:'#8B5CF6'}}));
+              }
+              frow2.appendChild(fbt2);
+              [{v:f.total,l:'sols',c:'#374151'},{v:f.aprobadas,l:'aprob.',c:'#10B981'},{v:f.vendors,l:'marcas',c:'#D97706'},{v:'$'+fN(f.monto),l:'monto',c:'#0F766E'}].forEach(function(st){
+                var sb=h('div',{style:{textAlign:'right',minWidth:50,flexShrink:0}});
+                sb.appendChild(h('div',{style:{fontSize:12,fontWeight:700,color:st.c}},String(st.v)));
+                sb.appendChild(h('div',{style:{fontSize:9,color:'#9CA3AF',textTransform:'uppercase',letterSpacing:'0.03em'}},st.l));
+                frow2.appendChild(sb);
+              });
+              detAgo.appendChild(frow2);
+            });
+            cardElAgo.appendChild(detAgo);
+          }
+          gridSupAgo.appendChild(cardElAgo);
+        });
+        ct.appendChild(gridSupAgo);
+      }
+    }
   }
 
   wrap.appendChild(ct);return wrap;
