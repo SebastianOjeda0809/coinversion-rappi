@@ -1199,7 +1199,10 @@ function buildSupervisor(){
             S.reqs=S.reqs.map(function(x){return x.id===r.id?upd:x;});
             sg('ci_reqs_abr26',S.reqs);
             R();
-            apiUpsertReq(upd).then(function(){R();});
+            apiUpsertReq(upd).then(function(_sr){
+              if(!_sr||!_sr.ok){alert('⚠️ No se pudo enviar esta excepción al administrador (falló la sincronización con el servidor). Vuelve a intentarlo — si no, el admin nunca la va a ver en su cola.');}
+              R();
+            });
           }},'✅ Aprobar excepción');
         const btnRech=h('button',{style:{...btn('#FEF2F2','#DC2626'),flex:1,padding:'11px',fontSize:14,fontWeight:700,borderRadius:10,border:'2px solid #FECACA'},
           onClick:function(){
@@ -1209,7 +1212,10 @@ function buildSupervisor(){
             S.reqs=S.reqs.map(function(x){return x.id===r.id?upd:x;});
             sg('ci_reqs_abr26',S.reqs);
             R();
-            apiUpsertReq(upd).then(function(){R();});
+            apiUpsertReq(upd).then(function(_sr){
+              if(!_sr||!_sr.ok){alert('⚠️ No se pudo sincronizar este rechazo con el servidor. Vuelve a intentarlo.');}
+              R();
+            });
           }},'❌ Rechazar');
         btns.appendChild(btnAprob);btns.appendChild(btnRech);
         body.appendChild(btns);
