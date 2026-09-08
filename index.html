@@ -313,6 +313,10 @@ const fD=function(d){if(!d||d===''||d==='0001-01-01'||d==='Invalid Date')return 
 const fDsol=function(r){var fi=fD(r.fechaInicio);if(fi!=='—')return fi;var ca=fD((r.createdAt||'').slice(0,10));return ca!=='—'?ca:'—';};
 const mA=d=>{const t=new Date(d+'T12:00:00');return t.getFullYear()+'-'+t.getMonth()};
 const mL=d=>new Date(d+'T12:00:00').toLocaleDateString('es-CO',{month:'long',year:'numeric'});
+// Siempre el 1º del mes calendario actual — dinámico a propósito, para no
+// tener que tocar código cada mes (antes había una fecha de corte fija).
+function inicioMesActual(){var d=new Date();return new Date(d.getFullYear(),d.getMonth(),1,0,0,0);}
+function nombreMesActual(){var d=new Date();return d.toLocaleDateString('es-CO',{month:'long',year:'numeric'});}
 const calcCI=(pal,mto,pct,sem)=>{if(!mto)return 0;if(pal==='porcentaje')return mto*((pct||0)/100);if(pal==='free_trial')return mto*((sem||1)/4);return 0;};
 const getCC=p=>{const k=(p||'').toUpperCase().trim();return CC[k]||k.substring(0,2)};
 const sg=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
@@ -993,7 +997,9 @@ function buildSupervisor(){
   const myEmails=new Set(myTeam.map(r=>nE(r.fa)));
   const normFarmer=nE;
   const excPend=S.reqs.filter(r=>r.status==='pending_supervisor'&&myEmails.has(nE(r.farmer)));
-  const teamReqs=S.reqs.filter(r=>myEmails.has(nE(r.farmer)));
+  // Solo solicitudes del mes en curso — no todo el histórico del equipo.
+  const inicioMes=inicioMesActual();
+  const teamReqs=S.reqs.filter(r=>myEmails.has(nE(r.farmer))&&r.createdAt&&new Date(r.createdAt)>=inicioMes);
 
   const wrap=h('div',{style:{minHeight:'100vh',background:'#F0F4F8'}});
   wrap.appendChild(topBar('#0F766E','Mi Equipo — Co-Inversiones',null,S.user));
@@ -1016,7 +1022,7 @@ function buildSupervisor(){
     const kpis=h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:10,marginBottom:20}});
     [
       {l:'Farmers activos',v:myTeam.length,c:'#0F766E',ic:'👥'},
-      {l:'Total solicitudes',v:teamReqs.length,c:'#374151',ic:'📋'},
+      {l:'Solicitudes del mes',v:teamReqs.length,c:'#374151',ic:'📋'},
       {l:'Aprobadas',v:aprobTeam.length,c:'#059669',ic:'✅'},
       {l:'En revisión admin',v:pendTeam.length,c:'#D97706',ic:'⏳'},
       {l:'Excepciones pend.',v:excTeam.length,c:'#7C3AED',ic:'⚡'},
@@ -1856,13 +1862,13 @@ function buildAdmin(){
     // supervisor puede aparecer para dos admins distintos, cada uno viendo
     // solo su porción del equipo.
     var supEmails=Object.keys(SUP_PINS);
-    // Solo solicitudes desde mayo 2026 (mes actual en adelante)
-    var INICIO_MAYO=new Date('2026-05-01T00:00:00');
-    var reqsMayo=misReqs.filter(function(r){
+    // Solo solicitudes del mes calendario en curso — no todo el histórico.
+    var INICIO_MES_SUP=inicioMesActual();
+    var reqsMesActual=misReqs.filter(function(r){
       var f=r.fecha||r.date||r.timestamp||r.createdAt||'';
-      if(!f)return true; // si no tiene fecha, incluir
+      if(!f)return false;
       var d=new Date(f);
-      return !isNaN(d)&&d>=INICIO_MAYO;
+      return !isNaN(d)&&d>=INICIO_MES_SUP;
     });
 
     var supData=supEmails.map(function(email){
@@ -1870,7 +1876,7 @@ function buildAdmin(){
       var myTeamAll=HC.filter(function(h){return h.l&&h.l.toLowerCase()===email.toLowerCase()&&h.pa!=='Churn'&&h.pa!=='Nuevo';});
       var myTeam=(S.verTodoAdmin||!S.adminEmail)?myTeamAll:myTeamAll.filter(function(h){return h.cm===S.adminEmail;});
       var myEm=new Set(myTeam.map(function(h){return nE(h.fa);}));
-      var myReqs=reqsMayo.filter(function(r){return myEm.has(nE(r.farmer));});
+      var myReqs=reqsMesActual.filter(function(r){return myEm.has(nE(r.farmer));});
       var aprobadas=myReqs.filter(function(r){return r.status==='approved';});
       var monto=aprobadas.reduce(function(a,r){return a+Number(r.montoCampana||0);},0);
       var farmersActivos=new Set(myReqs.map(function(r){return nE(r.farmer);}));
@@ -1884,15 +1890,16 @@ function buildAdmin(){
     var sinSolCount=supData.filter(function(s){return s.solicitudes===0;}).length;
 
     // Header
+    var nombreMesCap=(function(l){return l.charAt(0).toUpperCase()+l.slice(1);})(nombreMesActual());
     ct.appendChild(h('div',{style:{marginBottom:16}},[
-      h('div',{style:{fontSize:15,fontWeight:800,color:'#111827',marginBottom:2}},'Seguimiento Mayo 2026 — Supervisores'),
-      h('div',{style:{fontSize:12,color:'#6B7280'}},supData.length+' supervisores · '+reqsMayo.length+' solicitudes desde 1 mayo · '+S.reqs.length+' históricas totales')
+      h('div',{style:{fontSize:15,fontWeight:800,color:'#111827',marginBottom:2}},'Seguimiento '+nombreMesCap+' — Supervisores'),
+      h('div',{style:{fontSize:12,color:'#6B7280'}},supData.length+' supervisores · '+reqsMesActual.length+' solicitudes este mes · '+S.reqs.length+' históricas totales')
     ]));
 
     // KPIs top
     var kRow=h('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:18}});
     [
-      {l:'Solicitudes Mayo 2026',v:reqsMayo.length,c:'#374151'},
+      {l:'Solicitudes '+nombreMesCap,v:reqsMesActual.length,c:'#374151'},
       {l:'Top volumen',v:supData[0]?supData[0].name:'—',c:'#FF441F',sm:true},
       {l:'Top monto',v:topMonto.name,c:'#0F766E',sm:true},
       {l:'Supervisores sin actividad',v:sinSolCount,c:sinSolCount>0?'#D97706':'#10B981'}
