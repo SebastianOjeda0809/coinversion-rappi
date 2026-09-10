@@ -369,16 +369,79 @@ const gg=k=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null}cat
 // Jerarquía de estados: approved/rejected > pending_admin > pending_supervisor > pending > (nuevo)
 var STATUS_RANK={"approved":5,"rejected":5,"pending_admin":4,"pending_supervisor":3,"pending":2};
 function statusRank(s){return STATUS_RANK[s]||1;}
-function mergeReqs(local,remote){const byId=new Map();local.forEach(x=>{if(x&&x.id)byId.set(x.id,x);});const _AHORA=Date.now(),_VENTANA=600000;/* 10 min: se protege una decision LOCAL recien hecha de un GET viejo cuyo POST aun no llego; una divergencia antigua (el POST fallo en su momento) se sana dejando ganar al backend */remote.forEach(x=>{if(!x||!x.id)return;const loc=byId.get(x.id);if(!loc){byId.set(x.id,x);return;}
-const locTerminal=loc.status==='approved'||loc.status==='rejected';
-const remTerminal=x.status==='approved'||x.status==='rejected';
-if(locTerminal&&!remTerminal){const _tLoc=Date.parse(loc.reviewedAt||loc.supReviewedAt||'')||0;if(_tLoc&&(_AHORA-_tLoc)<_VENTANA)return;/* fresca: gana el local */byId.set(x.id,x);return;/* vieja: gana el backend */}
-if(statusRank(x.status)>statusRank(loc.status)){byId.set(x.id,x);}// Si mismo rango, gana el más reciente
-else if(statusRank(x.status)===statusRank(loc.status)){const tLoc=loc.reviewedAt||loc.supReviewedAt||loc.createdAt||'';const tRem=x.reviewedAt||x.supReviewedAt||x.createdAt||'';if(tRem>tLoc)byId.set(x.id,x);}});return Array.from(byId.values());}
+// Merge determinista: el backend SIEMPRE manda, salvo por los ids que este
+// navegador tiene en su outbox (una escritura propia que aún no confirmó el
+// servidor). Nada de heurísticas de tiempo — mientras un cambio esté en la
+// outbox se protege el estado local; en cuanto se confirma (o si nunca hubo
+// escritura local para ese id) gana el servidor. Así todos convergen a lo
+// que dice el backend y quien hizo un cambio que no llegó lo ve marcado
+// "sin sincronizar", no como un falso "aprobado".
+function mergeReqs(local,remote){
+  var enOutbox={};
+  try{(typeof outboxIds==='function'?outboxIds():[]).forEach(function(id){enOutbox[id]=1;});}catch(e){}
+  var byId=new Map();
+  (local||[]).forEach(function(x){if(x&&x.id)byId.set(x.id,x);});
+  (remote||[]).forEach(function(x){
+    if(!x||!x.id)return;
+    if(enOutbox[x.id])return; // escritura propia sin confirmar: se respeta el local
+    byId.set(x.id,x);         // cualquier otro id: gana el backend
+  });
+  return Array.from(byId.values());
+}
 async function apiGet(){try{const r=await fetch(APPS_SCRIPT_URL+"?t="+Date.now());const d=await r.json();if(d.ok){if(d.reqs){const local=gg("ci_reqs_abr26")||[];const merged=mergeReqs(local,d.reqs);S.reqs=merged;sg("ci_reqs_abr26",merged);}if(d.budget){S.budget=d.budget;sg("ci_budget",d.budget);}return d;}}catch(e){console.warn("API read error",e);}return null;}
 async function apiSaveReqs(reqs){try{sg("ci_reqs_abr26",reqs);const r=await fetch(APPS_SCRIPT_URL,{method:"POST",mode:"cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"saveReqs",reqs:reqs})});const d=await r.json().catch(()=>null);if(!d||!d.ok){console.warn("saveReqs fallo",d);return {ok:false,error:(d&&d.error)||"unknown"};}return d;}catch(e){console.warn("API save error",e);return {ok:false,error:e.toString()};}}
 async function apiSaveBudget(budget){try{sg("ci_budget",budget);fetch(APPS_SCRIPT_URL,{method:"POST",mode:"no-cors",body:JSON.stringify({action:"saveBudget",budget:budget})});}catch(e){console.warn("API save error",e);}}
 async function apiUpsertReq(req){try{const body=JSON.stringify({action:"upsertReq",req:req,actor:(S&&S.user)||""});const r=await fetch(APPS_SCRIPT_URL,{method:"POST",mode:"cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:body});const d=await r.json();if(!d||!d.ok){console.warn("upsertReq fallo",d);return {ok:false,error:(d&&d.error)||"unknown"};}return d;}catch(e){console.warn("upsertReq error",e);return {ok:false,error:e.toString()};}}
+
+// ── OUTBOX: cola persistente de escrituras no confirmadas ─────────────
+// Todo aprobar/rechazar/solicitud-nueva entra aquí y se REINTENTA (al hacer
+// el cambio, cada 15s, al abrir la app, al volver el foco) hasta que el
+// backend responda {ok:true}. Sólo entonces sale de la cola. Mientras un id
+// esté acá, mergeReqs protege su estado local; el resto converge al backend.
+// Esto mata la divergencia: la persona cuyo POST no llegó ve un aviso
+// persistente "N sin sincronizar", no un falso éxito, y todos los demás
+// (supervisor/farmer/otros admin) ven siempre la verdad del servidor.
+var _OUTBOX_KEY='ci_outbox_v1';
+function _outboxGet(){try{return JSON.parse(localStorage.getItem(_OUTBOX_KEY)||'{}')||{};}catch(e){return {};}}
+function _outboxSet(o){try{localStorage.setItem(_OUTBOX_KEY,JSON.stringify(o));}catch(e){}}
+function outboxIds(){return Object.keys(_outboxGet());}
+function encolarUpsert(req){
+  if(!req||!req.id)return;
+  var o=_outboxGet();o[req.id]=req;_outboxSet(o); // la última decisión sobre ese id gana
+  _pintarIndicadorSync();
+  flushOutbox();
+}
+var _flushEnCurso=false;
+async function flushOutbox(){
+  if(_flushEnCurso)return;
+  var ids=outboxIds();
+  if(ids.length===0){_pintarIndicadorSync();return;}
+  _flushEnCurso=true;
+  try{
+    for(var i=0;i<ids.length;i++){
+      var id=ids[i];
+      var actual=_outboxGet();
+      if(!actual[id])continue;
+      var res=await apiUpsertReq(actual[id]);
+      if(res&&res.ok){var o2=_outboxGet();delete o2[id];_outboxSet(o2);}
+      // si falla, queda en la cola para el próximo intento
+    }
+  }finally{_flushEnCurso=false;_pintarIndicadorSync();}
+}
+function _pintarIndicadorSync(){
+  var n=outboxIds().length;
+  var el=document.getElementById('_syncPend');
+  if(n===0){if(el)el.remove();return;}
+  if(!el){
+    el=document.createElement('div');
+    el.id='_syncPend';
+    el.style.cssText='position:fixed;top:10px;right:10px;z-index:99998;background:#B45309;color:#fff;padding:8px 14px;border-radius:8px;font:600 12px sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.25);cursor:pointer';
+    el.onclick=flushOutbox;
+    document.body.appendChild(el);
+  }
+  el.textContent='⚠️ '+n+' cambio'+(n>1?'s':'')+' sin sincronizar — clic para reintentar';
+}
+setInterval(flushOutbox,15000);
 async function apiDeleteReq(id){try{const body=JSON.stringify({action:"deleteReq",id:id,actor:(S&&S.user)||""});const r=await fetch(APPS_SCRIPT_URL,{method:"POST",mode:"cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:body});return await r.json();}catch(e){console.warn("deleteReq error",e);return {ok:false,error:e.toString()};}}
 const csvDL=(rows,fn)=>{const b=new Blob([rows.join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=fn;a.click()};
 function makeCSV(reqs){
@@ -935,8 +998,8 @@ function doSubmit(){
       excepcionRazon:S.excRazon.trim(),
       excRazon:S.excRazon.trim()}; // guardamos en ambos campos para compatibilidad
     S.reqs=[...S.reqs,nueva];sg("ci_reqs_abr26",S.reqs);
-    apiUpsertReq(nueva).then(function(res){if(!res.ok)S.okMsg='Guardado local; revisa conexión ('+(res.error||'?')+')';else S.okMsg='Excepción enviada al supervisor.';render();});
-    S.okMsg='Enviando al supervisor...';
+    encolarUpsert(nueva);
+    S.okMsg='Excepción enviada al supervisor.';
     S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''};
     S.vRes=null;S.fErr={};S.exc=false;S.excRazon='';S.tab='mis';
     render();
@@ -961,8 +1024,8 @@ function doSubmit(){
     coinversionAmount:calcCI(req.palanca,req.montoCampana,req.porcentaje,req.semanas)
   };
   S.reqs=[...S.reqs,nueva];sg("ci_reqs_abr26",S.reqs);
-  apiUpsertReq(nueva).then(function(res){if(!res.ok)S.okMsg='Guardado local; revisa conexión ('+(res.error||'?')+')';else S.okMsg='Solicitud enviada. Pendiente de aprobación.';render();});
-  S.okMsg='Enviando...';
+  encolarUpsert(nueva);
+  S.okMsg='Solicitud enviada. Pendiente de aprobación.';
   S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''};
   S.vRes=null;S.fErr={};S.tab='mis';
   render();
@@ -1205,11 +1268,8 @@ function buildSupervisor(){
             var upd=Object.assign({},r,{status:'pending_admin',supReviewedAt:new Date().toISOString(),supAprobadoPor:S.user});
             S.reqs=S.reqs.map(function(x){return x.id===r.id?upd:x;});
             sg('ci_reqs_abr26',S.reqs);
+            encolarUpsert(upd);
             R();
-            apiUpsertReq(upd).then(function(_sr){
-              if(!_sr||!_sr.ok){alert('⚠️ No se pudo enviar esta excepción al administrador (falló la sincronización con el servidor). Vuelve a intentarlo — si no, el admin nunca la va a ver en su cola.');}
-              R();
-            });
           }},'✅ Aprobar excepción');
         const btnRech=h('button',{style:{...btn('#FEF2F2','#DC2626'),flex:1,padding:'11px',fontSize:14,fontWeight:700,borderRadius:10,border:'2px solid #FECACA'},
           onClick:function(){
@@ -1218,11 +1278,8 @@ function buildSupervisor(){
             var upd=Object.assign({},r,{status:'rejected',rejectionReason:motivo||'Rechazado por supervisor',supReviewedAt:new Date().toISOString(),supAprobadoPor:S.user});
             S.reqs=S.reqs.map(function(x){return x.id===r.id?upd:x;});
             sg('ci_reqs_abr26',S.reqs);
+            encolarUpsert(upd);
             R();
-            apiUpsertReq(upd).then(function(_sr){
-              if(!_sr||!_sr.ok){alert('⚠️ No se pudo sincronizar este rechazo con el servidor. Vuelve a intentarlo.');}
-              R();
-            });
           }},'❌ Rechazar');
         btns.appendChild(btnAprob);btns.appendChild(btnRech);
         body.appendChild(btns);
@@ -1256,13 +1313,9 @@ function aprobarGrupoCSV(palanca){
     return ap?ap:r;
   });
   saveReqs(nuevosReqs);
-  // No se espera la respuesta del servidor aquí — Apps Script puede tardar
-  // varios segundos y bloquear la generación del CSV se sentía como que el
-  // botón no respondía. Se sincroniza en segundo plano y se avisa si falla.
-  Promise.all(aprobadas.map(function(a){return apiUpsertReq(a);})).then(function(_syncR){
-    var _syncFail=_syncR.filter(function(r){return !r||!r.ok;}).length;
-    if(_syncFail>0){alert('⚠️ '+_syncFail+' de '+aprobadas.length+' aprobaciones no se pudieron sincronizar con el servidor. El supervisor/farmer no verá estos cambios hasta reintentar. Revisa tu conexión y usa "🔄 Re-aprobar y sincronizar" en Pendientes.');}
-  });
+  // Cada aprobación entra a la outbox: se reintenta hasta que el backend
+  // confirme. El CSV se genera al instante desde el estado local.
+  aprobadas.forEach(encolarUpsert);
   var fn=ahora.slice(0,10);
   if(palanca==='porcentaje'){
     var files=makeDescuentoCSVs(aprobadas);
@@ -1291,10 +1344,7 @@ function aprobarTanda(){
     return ap?ap:r;
   });
   saveReqs(nuevosReqs);
-  Promise.all(aprobadas.map(function(a){return apiUpsertReq(a);})).then(function(_syncR2){
-    var _syncFail2=_syncR2.filter(function(r){return !r||!r.ok;}).length;
-    if(_syncFail2>0){alert('⚠️ '+_syncFail2+' de '+aprobadas.length+' aprobaciones no se pudieron sincronizar con el servidor. El supervisor/farmer no verá estos cambios hasta reintentar. Revisa tu conexión y usa "🔄 Re-aprobar y sincronizar" en Pendientes.');}
-  });
+  aprobadas.forEach(encolarUpsert);
   // Generar CSVs
   var fn=ahora.slice(0,10);
   var dFiles=makeDescuentoCSVs(aprobadas);
@@ -1312,9 +1362,7 @@ function aprobarUno(id){
   var ahora=new Date().toISOString();
   var aprobada=Object.assign({},r,{status:'approved',reviewedAt:ahora});
   saveReqs(S.reqs.map(function(x){return x.id===id?aprobada:x;}));
-  apiUpsertReq(aprobada).then(function(_syncR3){
-    if(!_syncR3||!_syncR3.ok){alert('⚠️ La aprobación no se pudo sincronizar con el servidor. El supervisor/farmer no verá este cambio hasta reintentar. Revisa tu conexión y usa "🔄 Re-aprobar y sincronizar" en Pendientes.');}
-  });
+  encolarUpsert(aprobada);
   var fn=(r.brandId||'id')+'_'+ahora.slice(0,10);
   if(r.palanca==='porcentaje'){
     var files=makeDescuentoCSVs([aprobada]);
@@ -1379,15 +1427,14 @@ function buildAdmin(){
     // Botón de re-sync si hay pendientes que parecen ya aprobadas
     if(pend.length>0){
       var syncBox=h('div',{style:{background:'#FEF3C7',border:'2px solid #F59E0B',borderRadius:10,padding:'12px 16px',marginBottom:14,display:'flex',alignItems:'center',gap:12,flexWrap:'wrap'}});
-      syncBox.appendChild(h('div',{style:{flex:1,fontSize:13,color:'#92400E'}},[h('strong',{},'⚠️ ¿Ya aprobaste estas solicitudes antes? '),h('span',{},'Si el backend las trae como pendientes, usa este botón para re-aprobar y sincronizar todo.')]));
+      syncBox.appendChild(h('div',{style:{flex:1,fontSize:13,color:'#92400E'}},[h('strong',{},'⚠️ ¿Ya aprobaste estas solicitudes antes? '),h('span',{},'Vuelve a encolarlas para reintentar la sincronización con el servidor.')]));
       syncBox.appendChild(h('button',{style:{...btn('#F59E0B','#fff'),whiteSpace:'nowrap'},onClick:function(){
-        if(!confirm('¿Re-aprobar todas las '+pend.length+' pendientes y sincronizar al backend?'))return;
+        if(!confirm('¿Re-aprobar todas las '+pend.length+' pendientes y reintentar sincronización?'))return;
         var ahora=new Date().toISOString();
         var aprobadas=pend.map(function(r){return Object.assign({},r,{status:'approved',reviewedAt:ahora});});
         var nuevos=S.reqs.map(function(r){var a=aprobadas.find(function(x){return x.id===r.id;});return a?a:r;});
         saveReqs(nuevos);
-        aprobadas.forEach(function(a){apiUpsertReq(a);});
-        alert('Listo. Recarga la página en 10 segundos.');
+        aprobadas.forEach(encolarUpsert);
         R();
       }},'🔄 Re-aprobar y sincronizar ('+pend.length+')'));
       ct.appendChild(syncBox);
@@ -1635,9 +1682,7 @@ function buildAdmin(){
             rj.appendChild(h('button',{style:{...btn('#EF4444','#fff'),padding:'8px 14px'},onClick:function(){
               var _rechazada=Object.assign({},r,{status:'rejected',rejectionReason:S.rejectReason,reviewedAt:new Date().toISOString()});
               saveReqs(S.reqs.map(function(x){return x.id===r.id?_rechazada:x;}));
-              apiUpsertReq(_rechazada).then(function(_sr4){
-                if(!_sr4||!_sr4.ok){alert('⚠️ El rechazo no se pudo sincronizar con el servidor. El supervisor/farmer no verá este cambio hasta reintentar.');}
-              });
+              encolarUpsert(_rechazada);
               S.rejectId=null;S.rejectReason='';render();
             }},'Confirmar'));
             rj.appendChild(h('button',{style:{...btn('#F3F4F6','#374151'),padding:'8px 12px'},onClick:function(){S.rejectId=null;render();}},'Cancelar'));
@@ -1648,7 +1693,7 @@ function buildAdmin(){
           if(S.rejectId!==r.id){
             var ba=h('div',{style:{display:'flex',flexDirection:'column',gap:6,minWidth:110}});
             ba.appendChild(h('button',{style:{...btn('#10B981','#fff'),padding:'9px 0',width:'100%',textAlign:'center'},
-              onClick:function(){var id=r.id;var ahora2=new Date().toISOString();var aprobada2=Object.assign({},r,{status:'approved',reviewedAt:ahora2});saveReqs(S.reqs.map(function(x){return x.id===id?aprobada2:x;}));apiUpsertReq(aprobada2).then(function(_sr){if(!_sr||!_sr.ok){alert('⚠️ La aprobación no se pudo sincronizar con el servidor. El supervisor/farmer no verá este cambio hasta reintentar. Revisa tu conexión y usa "🔄 Re-aprobar y sincronizar" en Pendientes.');}});render();}},'✓ Aprobar'));
+              onClick:function(){var id=r.id;var ahora2=new Date().toISOString();var aprobada2=Object.assign({},r,{status:'approved',reviewedAt:ahora2});saveReqs(S.reqs.map(function(x){return x.id===id?aprobada2:x;}));encolarUpsert(aprobada2);render();}},'✓ Aprobar'));
             ba.appendChild(h('button',{style:{...btn('#059669','#fff',{fontSize:11}),padding:'9px 0',width:'100%',textAlign:'center'},
               onClick:function(){aprobarUno(r.id);}},'✓ Aprobar+CSV'));
             ba.appendChild(h('button',{style:{...btn('#FEE2E2','#B91C1C'),padding:'9px 0',width:'100%',textAlign:'center'},
@@ -2201,9 +2246,11 @@ S.loginEmail='';S.loginStep=null;
 // solicitudes desde Apps Script (eso podía tardar varios segundos).
 render();
 (async function init(){
+  await flushOutbox();           // reintentar escrituras pendientes ANTES de leer
   const remote=await apiGet();
   // apiGet() ya hizo el merge y guardó en S.reqs — NO pisar con remote.reqs crudo
   if(remote&&remote.budget)S.budget=remote.budget;
+  _pintarIndicadorSync();
   if(!_inputActivo()&&!document.getElementById('cierreWrap'))render();
 })();
 
@@ -2215,6 +2262,7 @@ async function autoRefresh(){
   if(!S.user)return;
   if(document.getElementById('cierreWrap'))return;
   if(_inputActivo())return;
+  await flushOutbox();           // primero reintenta lo propio pendiente
   const remote=await apiGet();
   if(remote&&remote.budget)S.budget=remote.budget;
   if(!_inputActivo()&&!document.getElementById('cierreWrap'))render();
