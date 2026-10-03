@@ -284,6 +284,7 @@ function esMiSolicitud(req){
 }
 var CM_BY_PAIS={AR:'jhon.ojeda@rappi.com',CL:'jhon.ojeda@rappi.com',UY:'jhon.ojeda@rappi.com',CO:'juan.longas@rappi.com',EC:'johan.vargas@rappi.com',PE:'johan.vargas@rappi.com',MX:'angela.rozo@rappi.com'};
 function cmPorPais(pais){var p=(pais||'').toString().toUpperCase().trim();var code=CC[p]||(p.length===2?p:'');return CM_BY_PAIS[code]||null;}
+function esEquipoPropio(req){var v=S.verTodoAdmin;S.verTodoAdmin=false;var ok=esMiSolicitud(req);S.verTodoAdmin=v;return ok;}
 function misSolicitudes(reqs){
   if(S.verTodoAdmin||!S.adminEmail)return reqs;
   return reqs.filter(esMiSolicitud);
@@ -1521,10 +1522,12 @@ function buildAdmin(){
 
   if(S.adminTab==='dash'){
     if(typeof S.selPais==='undefined')S.selPais=null;
-    // Dashboard: SOLO el equipo de cada admin (misReqs ya respeta "Cubrir
-    // vacaciones") y SOLO el mes en curso — nada de meses pasados.
+    // Dashboard: SOLO el mes en curso. Cada admin ve su equipo (misReqs respeta
+    // "Cubrir vacaciones"); jhon.ojeda ve TODOS los países pero con su equipo
+    // (AR/CL/UY) resaltado. Solo aplica a esta pestaña.
+    var dashGlobal=(S.adminEmail==='jhon.ojeda@rappi.com');
     var INICIO_MES_DASH=inicioMesActual();
-    var dashReqs=misReqs.filter(function(r){if(!r.createdAt)return false;var d=new Date(r.createdAt);return !isNaN(d)&&d>=INICIO_MES_DASH;});
+    var dashReqs=(dashGlobal?S.reqs:misReqs).filter(function(r){if(!r.createdAt)return false;var d=new Date(r.createdAt);return !isNaN(d)&&d>=INICIO_MES_DASH;});
     var dashAppr=dashReqs.filter(function(r){return r.status==='approved';});
     var dashPend=dashReqs.filter(function(r){return (r.status==='pending'||r.status==='pending_admin')&&!(r.exc&&r.status==='pending');});
     var totPct=dashReqs.filter(function(r){return r.palanca==='porcentaje';});
@@ -1535,7 +1538,7 @@ function buildAdmin(){
     var _mesDash=nombreMesActual();
     ct.appendChild(h('div',{style:{marginBottom:14}},[
       h('div',{style:{fontSize:15,fontWeight:800,color:'#111827',marginBottom:2}},'Dashboard — '+_mesDash.charAt(0).toUpperCase()+_mesDash.slice(1)),
-      h('div',{style:{fontSize:12,color:'#6B7280'}},S.verTodoAdmin?'Cubriendo vacaciones — todos los equipos':'Solo tu equipo · solicitudes creadas desde el 1 de '+_mesDash.split(' ')[0])
+      h('div',{style:{fontSize:12,color:'#6B7280'}},S.verTodoAdmin?'Cubriendo vacaciones — todos los equipos':dashGlobal?'Todos los países · tu equipo (Argentina, Chile, Uruguay) resaltado · desde el 1 de '+_mesDash.split(' ')[0]:'Solo tu equipo · solicitudes creadas desde el 1 de '+_mesDash.split(' ')[0])
     ]));
 
     // KPIs — mismo estilo que la pestaña Supervisores
@@ -1553,6 +1556,26 @@ function buildAdmin(){
       kRow.appendChild(kc);
     });
     ct.appendChild(kRow);
+
+    if(dashGlobal&&!S.verTodoAdmin){
+      var propias=dashReqs.filter(esEquipoPropio);
+      var propAppr=propias.filter(function(r){return r.status==='approved';});
+      var propPct=propias.filter(function(r){return r.palanca==='porcentaje';});
+      var propFT=propias.filter(function(r){return r.palanca==='free_trial';});
+      var propMonto=propAppr.reduce(function(s,r){return s+(r.coinversionAmount||r.montoCampana||0);},0);
+      var strip=h('div',{style:{background:'#FFF7ED',border:'2px solid #FDBA74',borderRadius:12,padding:'12px 16px',marginBottom:18,display:'flex',alignItems:'center',gap:18,flexWrap:'wrap'}});
+      strip.appendChild(h('div',{style:{flex:'1 1 200px'}},[
+        h('div',{style:{fontSize:13,fontWeight:800,color:'#C2410C'}},'⭐ Tu equipo — Argentina · Chile · Uruguay'),
+        h('div',{style:{fontSize:11,color:'#9A3412',marginTop:2}},'La parte de este mes que te corresponde aprobar')
+      ]));
+      [{l:'Solicitudes',v:propias.length,c:'#374151'},{l:'Aprobadas',v:propAppr.length,c:'#10B981'},{l:'Descuentos',v:propPct.length,c:'#3B82F6'},{l:'Free Trial',v:propFT.length,c:'#8B5CF6'},{l:'Monto aprobado',v:'$'+fN(propMonto),c:'#0F766E'}].forEach(function(k){
+        var kb=h('div',{style:{textAlign:'center',minWidth:70}});
+        kb.appendChild(h('div',{style:{fontSize:18,fontWeight:800,color:k.c}},String(k.v)));
+        kb.appendChild(h('div',{style:{fontSize:9,color:'#9A3412',fontWeight:600,textTransform:'uppercase',letterSpacing:'0.03em',marginTop:2}},k.l));
+        strip.appendChild(kb);
+      });
+      ct.appendChild(strip);
+    }
 
     // Botón de re-sync si hay pendientes que parecen ya aprobadas
     if(pend.length>0){
@@ -1582,21 +1605,21 @@ function buildAdmin(){
     } else {
       var byPais={};
       dashAppr.forEach(function(r){var p=r.pais||'Sin país';if(!byPais[p])byPais[p]={reqs:[],monto:0};byPais[p].reqs.push(r);byPais[p].monto+=(r.coinversionAmount||r.montoCampana||0);});
-      var paisRows=Object.keys(byPais).map(function(p){return {pais:p,reqs:byPais[p].reqs,count:byPais[p].reqs.length,monto:byPais[p].monto};}).sort(function(a,b){return b.count-a.count;});
-      var maxCount=paisRows[0]?(paisRows[0].count||1):1;
+      var paisRows=Object.keys(byPais).map(function(p){return {pais:p,reqs:byPais[p].reqs,count:byPais[p].reqs.length,monto:byPais[p].monto,propio:dashGlobal&&!S.verTodoAdmin&&cmPorPais(p)===S.adminEmail};}).sort(function(a,b){return (b.propio?1:0)-(a.propio?1:0)||b.count-a.count;});
+      var maxCount=paisRows.reduce(function(m,x){return Math.max(m,x.count);},1);
 
       var gridPais=h('div',{style:{display:'flex',flexDirection:'column',gap:8}});
       paisRows.forEach(function(pr){
         var isSel=S.selPais===pr.pais;
         var pctBar=Math.round(pr.count/maxCount*100);
-        var cardEl=h('div',{class:'hoverlift',style:{background:'#fff',borderRadius:14,border:'2px solid '+(isSel?'#FF441F':'#E5E7EB'),overflow:'hidden'}});
+        var cardEl=h('div',{class:'hoverlift',style:{background:pr.propio?'#FFF7ED':'#fff',borderRadius:14,border:'2px solid '+(isSel?'#FF441F':pr.propio?'#FDBA74':'#E5E7EB'),overflow:'hidden'}});
 
         var ch=h('div',{style:{padding:'14px 18px',display:'flex',alignItems:'center',gap:14,cursor:'pointer'},onClick:function(){S.selPais=isSel?null:pr.pais;R();}});
         var av=h('div',{style:{width:40,height:40,borderRadius:'50%',background:'#FEF2EE',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:14,color:'#FF441F',flexShrink:0}},pr.pais.charAt(0).toUpperCase());
         ch.appendChild(av);
 
         var ci=h('div',{style:{flex:1,minWidth:0}});
-        ci.appendChild(h('div',{style:{fontWeight:700,fontSize:13,color:'#111827'}},pr.pais));
+        ci.appendChild(h('div',{style:{fontWeight:700,fontSize:13,color:'#111827'}},pr.propio?[pr.pais,h('span',{style:{marginLeft:8,background:'#FFEDD5',color:'#C2410C',borderRadius:999,padding:'2px 8px',fontSize:10,fontWeight:700}},'⭐ Tu equipo')]:pr.pais));
         var bt=h('div',{style:{background:'#F3F4F6',borderRadius:3,height:4,marginTop:5}});
         var bf=h('div',{style:{background:'#FF441F',borderRadius:3,height:4,width:pctBar+'%'}});
         bt.appendChild(bf);ci.appendChild(bt);
@@ -1680,7 +1703,7 @@ function buildAdmin(){
     dashRow.appendChild(leftCol);
 
     // Actividad de farmers — sin actividad reciente vs. exceso de volumen
-    var activos=HC.filter(function(r){return r.pa!=='Churn'&&r.pa!=='Nuevo'&&(S.verTodoAdmin||r.cm===S.adminEmail);});
+    var activos=HC.filter(function(r){return r.pa!=='Churn'&&r.pa!=='Nuevo'&&(S.verTodoAdmin||dashGlobal||r.cm===S.adminEmail);});
     var nowMs=Date.now();
     var farmerStats=activos.map(function(f){
       var email=nE(f.fa);
@@ -1693,7 +1716,7 @@ function buildAdmin(){
         if(!isNaN(dt)&&(!lastDate||dt>lastDate))lastDate=dt;
       });
       var days=lastDate?Math.floor((nowMs-lastDate.getTime())/86400000):null;
-      return {email:email,lider:(f.l||'').replace('@rappi.com',''),count:freqs.length,days:days};
+      return {email:email,lider:(f.l||'').replace('@rappi.com',''),count:freqs.length,days:days,mine:dashGlobal&&!S.verTodoAdmin&&f.cm===S.adminEmail};
     });
 
     var sinActividad=farmerStats.slice().sort(function(a,b){
@@ -1715,9 +1738,9 @@ function buildAdmin(){
       sinActividad.forEach(function(f,i){
         var sev=f.days===null?'#EF4444':f.days>=60?'#EF4444':f.days>=30?'#F59E0B':'#9CA3AF';
         var sevBg=f.days===null?'#FEE2E2':f.days>=60?'#FEE2E2':f.days>=30?'#FEF3C7':'#F3F4F6';
-        var frow=h('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'7px 8px',borderRadius:8,background:i%2===0?'#FAFAFA':'#fff',marginBottom:2}});
+        var frow=h('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'7px 8px',borderRadius:8,background:f.mine?'#FFF7ED':(i%2===0?'#FAFAFA':'#fff'),marginBottom:2}});
         var fi=h('div',{style:{flex:1,minWidth:0}});
-        fi.appendChild(h('div',{style:{fontSize:12,fontWeight:600,color:'#111827',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},f.email));
+        fi.appendChild(h('div',{style:{fontSize:12,fontWeight:600,color:'#111827',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},f.mine?['⭐ ',f.email]:f.email));
         fi.appendChild(h('div',{style:{fontSize:10,color:'#9CA3AF',marginTop:1}},f.lider));
         frow.appendChild(fi);
         frow.appendChild(h('span',{style:{background:sevBg,color:sev,borderRadius:8,padding:'3px 9px',fontSize:11,fontWeight:700,flexShrink:0,whiteSpace:'nowrap'}},f.days===null?'Sin solicitudes este mes':f.days+' días'));
@@ -1733,9 +1756,9 @@ function buildAdmin(){
     } else {
       var excesoBox=h('div',{style:{maxHeight:320,overflowY:'auto',paddingRight:4}});
       exceso.forEach(function(f,i){
-        var frow=h('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'7px 8px',borderRadius:8,background:i%2===0?'#FAFAFA':'#fff',marginBottom:2}});
+        var frow=h('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'7px 8px',borderRadius:8,background:f.mine?'#FFF7ED':(i%2===0?'#FAFAFA':'#fff'),marginBottom:2}});
         var fi=h('div',{style:{flex:1,minWidth:0}});
-        fi.appendChild(h('div',{style:{fontSize:12,fontWeight:600,color:'#111827',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},f.email));
+        fi.appendChild(h('div',{style:{fontSize:12,fontWeight:600,color:'#111827',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}},f.mine?['⭐ ',f.email]:f.email));
         fi.appendChild(h('div',{style:{fontSize:10,color:'#9CA3AF',marginTop:1}},f.lider));
         frow.appendChild(fi);
         frow.appendChild(h('span',{style:{background:'#EDE9FE',color:'#5B21B6',borderRadius:8,padding:'3px 9px',fontSize:11,fontWeight:700,flexShrink:0}},f.count+' sol.'));
