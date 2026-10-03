@@ -313,10 +313,10 @@ function mergeReqs(local,remote){
   });
   return Array.from(byId.values());
 }
-async function apiGet(){try{const r=await fetch(APPS_SCRIPT_URL+"?t="+Date.now());const d=await r.json();if(d.ok){if(d.reqs){const local=gg("ci_reqs_abr26")||[];const merged=mergeReqs(local,d.reqs);S.reqs=merged;sg("ci_reqs_abr26",merged);}if(d.budget){S.budget=d.budget;sg("ci_budget",d.budget);}return d;}}catch(e){console.warn("API read error",e);}return null;}
+async function apiGet(){try{const r=await fetch(APPS_SCRIPT_URL+"?t="+Date.now());const d=await r.json();if(d.ok){if(d.reqs){const local=gg("ci_reqs_abr26")||[];const merged=mergeReqs(local,d.reqs.map(_unpackAds));S.reqs=merged;sg("ci_reqs_abr26",merged);}if(d.budget){S.budget=d.budget;sg("ci_budget",d.budget);}return d;}}catch(e){console.warn("API read error",e);}return null;}
 async function apiSaveReqs(reqs){try{sg("ci_reqs_abr26",reqs);const r=await fetch(APPS_SCRIPT_URL,{method:"POST",mode:"cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({action:"saveReqs",reqs:reqs})});const d=await r.json().catch(()=>null);if(!d||!d.ok){console.warn("saveReqs fallo",d);return {ok:false,error:(d&&d.error)||"unknown"};}return d;}catch(e){console.warn("API save error",e);return {ok:false,error:e.toString()};}}
 async function apiSaveBudget(budget){try{sg("ci_budget",budget);fetch(APPS_SCRIPT_URL,{method:"POST",mode:"no-cors",body:JSON.stringify({action:"saveBudget",budget:budget})});}catch(e){console.warn("API save error",e);}}
-async function apiUpsertReq(req){try{const body=JSON.stringify({action:"upsertReq",req:req,actor:(S&&S.user)||""});const r=await fetch(APPS_SCRIPT_URL,{method:"POST",mode:"cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:body});const d=await r.json();if(!d||!d.ok){console.warn("upsertReq fallo",d);return {ok:false,error:(d&&d.error)||"unknown"};}return d;}catch(e){console.warn("upsertReq error",e);return {ok:false,error:e.toString()};}}
+async function apiUpsertReq(req){try{const body=JSON.stringify({action:"upsertReq",req:_packAds(req),actor:(S&&S.user)||""});const r=await fetch(APPS_SCRIPT_URL,{method:"POST",mode:"cors",headers:{"Content-Type":"text/plain;charset=utf-8"},body:body});const d=await r.json();if(!d||!d.ok){console.warn("upsertReq fallo",d);return {ok:false,error:(d&&d.error)||"unknown"};}return d;}catch(e){console.warn("upsertReq error",e);return {ok:false,error:e.toString()};}}
 
 // ── OUTBOX: cola persistente de escrituras no confirmadas ─────────────
 // Todo aprobar/rechazar/solicitud-nueva entra aquí y se REINTENTA (al hacer
@@ -453,17 +453,99 @@ function makeHistoricoCSV(reqs,desde,hasta){
 }
 
 // ══════════════════════════════════════════════════
+// TIPO DE ADS + REGLAS DE MARCA (histórico reciente)
+// ══════════════════════════════════════════════════
+// El backend (Apps Script) solo guarda columnas fijas y descarta campos
+// nuevos. El tipo de ads viaja empaquetado al inicio de la columna libre
+// supComment como "[ADS|nominal]" o "[ADS|porcentual|15]" y se
+// desempaqueta al leer, así supervisor y admin lo ven desde cualquier equipo.
+function _packAds(req){
+  if(!req||!req.adsTipo)return req;
+  var base=String(req.supComment||'').replace(/^\[ADS\|[^\]]*\]\s*/,'');
+  var tag='[ADS|'+req.adsTipo+(req.adsTipo==='porcentual'&&req.adsPct?'|'+req.adsPct:'')+']';
+  return Object.assign({},req,{supComment:(tag+(base?' '+base:'')).trim()});
+}
+function _unpackAds(r){
+  if(!r||typeof r.supComment!=='string')return r;
+  var m=r.supComment.match(/^\[ADS\|(nominal|porcentual)(?:\|([\d.]+))?\]\s*/);
+  if(!m)return r;
+  return Object.assign({},r,{adsTipo:m[1],adsPct:m[2]?parseFloat(m[2]):null,supComment:r.supComment.slice(m[0].length)});
+}
+// Lo que escribe el farmer (15, 15%, 0,15) -> porcentaje (15). null si no es válido.
+function pctAdsParse(v){var n=parseFloat(String(v==null?'':v).replace('%','').replace(',','.').trim());if(!isFinite(n)||n<=0)return null;if(n<1)n=n*100;if(n>100)return null;return Math.round(n*100)/100;}
+function adsLabel(r){return r&&r.adsTipo==='porcentual'?'Ads porcentual'+(r.adsPct?' · '+r.adsPct+'%':''):'Ads nominal';}
+function _errAds(f){var e={};if(!f.adsTipo)e.adsTipo='Requerido';else if(f.adsTipo==='porcentual'&&pctAdsParse(f.adsPct)==null)e.adsPct='Escribe el % (entre 1 y 100)';return e;}
+
+function _fechaSol(r){var f=r.fechaInicio||r.createdAt||'';if(!f)return null;var d=new Date(String(f).length<=10?f+'T12:00:00':f);return isNaN(d)?null:d;}
+function _tsSol(r){var f=r.createdAt||r.fechaInicio||'';if(!f)return 0;var d=new Date(String(f).length<=10?f+'T12:00:00':f);return isNaN(d)?0:d.getTime();}
+// Reglas por marca (misma palanca, sin contar rechazadas ni la propia solicitud):
+//  1) Últimos 2 meses: si tuvo más % (o más semanas) que lo solicitado Y el
+//     presupuesto pedido es menor al de su última solicitud -> excepción.
+//  2) Mismo mes: si ya tuvo una solicitud de la misma palanca y el presupuesto
+//     es igual o inferior al de la primera -> excepción.
+// Solo mira solicitudes ANTERIORES a la evaluada (sirve igual para una nueva
+// que para revisar una ya enviada).
+function reglasMarca(req,all){
+  var errs=[];
+  if(!req||!req.brandId||!req.palanca)return errs;
+  var mto=parseFloat(req.montoCampana)||0;
+  var enviada=!!(req.createdAt||req.fechaInicio);
+  var reqTs=req.createdAt?_tsSol(req):Date.now();
+  var ref=enviada?(_fechaSol(req)||new Date()):new Date();
+  var rk=ref.getFullYear()*12+ref.getMonth();
+  var key=function(r){var d=_fechaSol(r);return d.getFullYear()*12+d.getMonth();};
+  var orden=function(a,b){return (_fechaSol(a)-_fechaSol(b))||(_tsSol(a)-_tsSol(b));};
+  var det=function(r){return r.palanca==='porcentaje'?(parseInt(r.porcentaje)||0)+'% de descuento':(parseInt(r.semanas)||0)+' semana(s) de Free Trial';};
+  var pal=req.palanca==='porcentaje'?'descuento':'Free Trial';
+  var prev=(all||[]).filter(function(r){
+    if(!r||r.id===req.id||r.status==='rejected'||r.palanca!==req.palanca)return false;
+    if(String(r.brandId)!==String(req.brandId))return false;
+    if(!_fechaSol(r))return false;
+    return _tsSol(r)<reqTs;
+  });
+  // Regla 2 — mismo mes
+  var delMes=prev.filter(function(r){return key(r)===rk;}).sort(orden);
+  if(delMes.length){
+    var pr=delMes[0],mp=parseFloat(pr.montoCampana)||0;
+    if(mto<=mp)errs.push({t:'Misma palanca ya solicitada este mes',d:"La marca "+req.brandId+" ya tiene una solicitud de "+pal+" este mes ("+det(pr)+" · presupuesto "+fN(mp)+"). El presupuesto solicitado ("+fN(mto)+") es igual o inferior al de la primera solicitud. Si aplica, envíala como excepción."});
+  }
+  // Regla 1 — últimos 2 meses
+  var ant=prev.filter(function(r){var k=key(r);return k>=rk-2&&k<=rk-1;}).sort(orden);
+  if(ant.length){
+    var campo=req.palanca==='porcentaje'?'porcentaje':'semanas';
+    var nuevo=parseInt(req[campo])||0;
+    var mayores=ant.filter(function(r){return (parseInt(r[campo])||0)>nuevo;});
+    var ult=ant[ant.length-1],mu=parseFloat(ult.montoCampana)||0;
+    if(mayores.length&&mto<mu){
+      var may=mayores[mayores.length-1];
+      errs.push({t:'Menos beneficio y menos presupuesto que en los últimos 2 meses',d:"En los últimos 2 meses la marca "+req.brandId+" tuvo "+det(may)+" y su última solicitud fue de "+fN(mu)+". Ahora se pide "+det(req)+" con "+fN(mto)+" (menor). Si aplica, envíala como excepción."});
+    }
+  }
+  return errs;
+}
+// Aviso para supervisor/admin sobre una solicitud ya enviada
+function buildReglasAviso(r){
+  var rs=reglasMarca(r,[...HISTORICO,...S.reqs]);
+  if(!rs.length)return null;
+  var box=h('div',{style:{background:'#F5F3FF',border:'1.5px solid #A78BFA',borderRadius:8,padding:'8px 12px',marginBottom:8,fontSize:12,color:'#4C1D95'}});
+  box.appendChild(h('div',{style:{fontWeight:800,marginBottom:3}},'📏 Regla de marca incumplida'));
+  rs.forEach(function(e){box.appendChild(h('div',{style:{lineHeight:'1.45',marginTop:2}},[h('strong',{},e.t+': '),e.d]));});
+  return box;
+}
+
+// ══════════════════════════════════════════════════
 // VALIDACIÓN
 // ══════════════════════════════════════════════════
 function validate(req,all){
   const errA=[],errB=[],errC=[],infos=[];
   const mto=parseFloat(req.montoCampana)||0,pct=parseInt(req.porcentaje)||0;
   const hist=all.filter(r=>r.brandId===req.brandId&&r.status!=='rejected');
-  if(req.fechaInicio){const mR=mA(req.fechaInicio),dup=hist.find(r=>r.fechaInicio&&mA(r.fechaInicio)===mR);if(dup)errA.push({t:'Duplicado en el mismo mes',d:`La marca ${req.brandId} ya tiene co-inversión en ${mL(req.fechaInicio)} (${dup.palanca==='free_trial'?'FT '+dup.semanas+'s':dup.porcentaje+'% · '+fN(dup.montoCampana)}). No se permite otra en el mismo mes.`});}
+  // (El bloqueo general "Duplicado en el mismo mes" se reemplazó por reglasMarca: misma palanca + presupuesto.)
   if(req.palanca==='free_trial'){const ft=hist.find(r=>r.palanca==='free_trial');if(ft)errA.push({t:'Free Trial ya utilizado',d:`La marca ${req.brandId} ya recibió su Free Trial.`});const s=parseInt(req.semanas);if(!s||s<1||s>2)errA.push({t:'Semanas inválidas',d:'El Free Trial debe ser de 1 o 2 semanas.'});}
   if(req.palanca==='porcentaje'&&req.fechaInicio){const hp=hist.filter(r=>r.palanca==='porcentaje'&&r.fechaInicio).sort((a,b)=>new Date(b.fechaInicio)-new Date(a.fechaInicio));if(hp.length>0){const l=hp[0],ma=parseFloat(l.montoCampana)||0,pa=parseInt(l.porcentaje)||0;if(mto<ma){if(pct>pa)errC.push({t:'Monto baja y % sube — inválido',d:`Tuvo ${fN(ma)} al ${pa}% en ${mL(l.fechaInicio)}. El nuevo monto (${fN(mto)}) es MENOR y el % SUBE a ${pct}%. No permitido.`});else errB.push({t:'Monto inferior al histórico',d:`Tuvo ${fN(ma)} al ${pa}% en ${mL(l.fechaInicio)}. El nuevo monto (${fN(mto)}) es MENOR. Debe crecer.`});}else if(mto===ma)errB.push({t:'Mismo monto',d:`Ya tuvo exactamente ${fN(ma)} al ${pa}%. Debe ser mayor.`});else{infos.push(`✓ Monto sube: ${fN(ma)} → ${fN(mto)}`);if(pct<pa)infos.push(`% baja ${pa}% → ${pct}% (permitido, monto creció).`);}}else infos.push(`Primera co-inversión de ${req.brandId}.`);}
   const tipo=hist.filter(r=>r.palanca==='porcentaje').length>0?'upselling':'adquisicion';
-  return{errA,errB,errC,allErrors:[...errA,...errB,...errC],infos,tipo};
+  const errD=reglasMarca(req,all);
+  return{errA,errB,errC,errD,allErrors:[...errA,...errB,...errC,...errD],infos,tipo};
 }
 
 // ══════════════════════════════════════════════════
@@ -472,7 +554,7 @@ function validate(req,all){
 const S={
   role:null,user:'',tab:'',loginEmail:'',loginStep:null,adminPwd:'',pwdErr:false,emailErr:'',
   reqs:gg('ci_reqs_abr26')||[],budget:gg('ci_budget')||{total:500000000},
-  form:{pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''},
+  form:{pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',adsTipo:'',adsPct:'',fechaInicio:''},
   fErr:{},vRes:null,okMsg:'',exc:false,excRazon:'',
   adminTab:'dash',rejectId:null,rejectReason:'',searchBrand:'',showHistFilter:false,histDesde:'',histHasta:'',historicoCargado:0,adminEmail:null,verTodoAdmin:false,
   supTab:'equipo',selFarmer:null
@@ -677,7 +759,7 @@ function doLogin(role){
   }
   S.role=role;S.user=nE(full);
   S.tab=role==='farmer'?'nueva':'equipo';S.supTab='equipo';S.adminTab='dash';
-  S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''};
+  S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',adsTipo:'',adsPct:'',fechaInicio:''};
   S.vRes=null;S.fErr={};S.okMsg='';S.exc=false;S.excRazon='';S.selFarmer=null;S.etorWarned=false;R();
 }
 function chkPwd(){
@@ -706,7 +788,7 @@ function chkSupPin(){
   if(pin===SUP_PINS[full]){
     S.role='supervisor';S.user=nE(full);
     S.tab='equipo';S.supTab='equipo';
-    S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''};
+    S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',adsTipo:'',adsPct:'',fechaInicio:''};
     S.vRes=null;S.fErr={};S.okMsg='';S.exc=false;S.excRazon='';S.selFarmer=null;
     S.loginStep=null;S.supPin='';S.supPinErr=false;R();
   } else {
@@ -827,7 +909,18 @@ function buildFarmerForm(myHC){
 
   // Monto
   const mi=h('input',{type:'number',placeholder:'Ej: 1000000',style:inp(fe.montoCampana),onInput:e=>{S.form.montoCampana=e.target.value;S.fErr.montoCampana=null;S.vRes=null;}});mi.value=f.montoCampana;
-  grid.appendChild(fld('Monto campaña (moneda local) *',mi,fe.montoCampana));
+  const rowMonto=h('div',{style:{gridColumn:'1/-1',display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}});
+  rowMonto.appendChild(fld('Monto campaña (moneda local) *',mi,fe.montoCampana));
+  rowMonto.appendChild(fld('Tipo de ads *',sel(f.adsTipo,[['','Seleccionar...'],['nominal','Nominal'],['porcentual','Porcentual']],v=>{S.form.adsTipo=v;S.form.adsPct='';S.fErr.adsTipo=null;S.fErr.adsPct=null;R();},fe.adsTipo),fe.adsTipo));
+  if(f.adsTipo==='porcentual'){
+    const _hintAds=v=>{const n=pctAdsParse(v);return n==null?'':'→ se registrará como '+n+'%';};
+    const apHint=h('div',{style:{fontSize:11,color:'#059669',fontWeight:700,marginTop:3,minHeight:14}},_hintAds(f.adsPct));
+    const ap=h('input',{type:'text',inputmode:'decimal',placeholder:'Ej: 15 — el % que cerraste con el aliado',style:inp(fe.adsPct),onInput:e=>{S.form.adsPct=e.target.value;S.fErr.adsPct=null;apHint.textContent=_hintAds(e.target.value);}});
+    ap.value=f.adsPct;
+    const apw=fld('% cerrado con el aliado *',ap,fe.adsPct);apw.appendChild(apHint);
+    rowMonto.appendChild(apw);
+  }
+  grid.appendChild(rowMonto);
   // Fecha
   // fechaInicio se asigna automáticamente al enviar
 
@@ -876,19 +969,20 @@ function buildFarmerForm(myHC){
 
 function buildErrors(vr){
   const w=h('div',{style:{marginTop:12,display:'flex',flexDirection:'column',gap:8}});
-  const {errA,errB,errC,infos,allErrors}=vr;
+  const {errA,errB,errC,errD,infos,allErrors}=vr;
   if(allErrors.length===0&&infos.length>0){const ib=h('div',{style:{background:'#ECFDF5',border:'1px solid #6EE7B7',borderRadius:8,padding:'10px 14px'}});infos.forEach(m=>ib.appendChild(h('div',{style:{color:'#065F46',fontSize:13}},m)));w.appendChild(ib);}
   const rErr=(arr,bg,border,badgeBg,lbl,tc,dc)=>arr.forEach(e=>{const b=h('div',{style:{background:bg,border:'2px solid '+border,borderRadius:8,padding:'12px 14px'}});const r=h('div',{style:{display:'flex',alignItems:'center',gap:8,marginBottom:6}});r.appendChild(h('span',{style:{background:badgeBg,color:'#fff',borderRadius:4,padding:'1px 8px',fontSize:10,fontWeight:800}},lbl));r.appendChild(h('span',{style:{fontWeight:700,color:tc,fontSize:13}},e.t));b.appendChild(r);b.appendChild(h('div',{style:{color:dc,fontSize:13,lineHeight:'1.5'}},e.d));w.appendChild(b);});
   rErr(errA,'#FEF2F2','#FCA5A5','#EF4444','ERROR A','#B91C1C','#7F1D1D');
   rErr(errB,'#FFFBEB','#F59E0B','#F59E0B','ERROR B','#92400E','#78350F');
   rErr(errC,'#EFF6FF','#3B82F6','#3B82F6','ERROR C','#1D4ED8','#1E3A8A');
+  rErr(errD||[],'#F5F3FF','#A78BFA','#7C3AED','REGLA DE MARCA','#5B21B6','#4C1D95');
   return w;
 }
 
 function normForm(){
   const f=S.form,myHC=HC.find(r=>r.fa.toLowerCase()===(S.user+'@rappi.com').toLowerCase());
   const lider=myHC?(myHC.l||'').replace('@rappi.com',''):'';
-  return{...f,lider,montoCampana:parseFloat(f.montoCampana)||0,porcentaje:parseInt(f.porcentaje)||0,semanas:parseInt(f.semanas)||0};
+  return{...f,lider,montoCampana:parseFloat(f.montoCampana)||0,porcentaje:parseInt(f.porcentaje)||0,semanas:parseInt(f.semanas)||0,adsTipo:f.adsTipo||'',adsPct:f.adsTipo==='porcentual'?pctAdsParse(f.adsPct):null};
 }
 function doValidar(){
   const fe={};
@@ -901,6 +995,7 @@ function doValidar(){
   if(!f.montoCampana||parseFloat(f.montoCampana)<=0)fe.montoCampana='Monto requerido';
   if(f.palanca==='porcentaje'&&!f.porcentaje)fe.porcentaje='Selecciona %';
   if(f.palanca==='free_trial'&&!f.semanas)fe.semanas='Selecciona semanas';
+  Object.assign(fe,_errAds(f));
   if(Object.keys(fe).length>0){S.fErr=fe;S.vRes=null;render();return false;}
   const req=normForm();
   const r=validate(req,[...HISTORICO,...S.reqs]);
@@ -914,6 +1009,7 @@ function doSubmit(){
   // CASO EXCEPCIÓN
   if(S.exc){
     if(!S.excRazon.trim()){alert('Debes justificar la excepción.');return;}
+    {const _ea=_errAds(S.form);if(Object.keys(_ea).length){S.fErr=Object.assign({},S.fErr,_ea);render();return;}}
     const vr=validate(req,[...HISTORICO,...S.reqs]);
     const hoyEx=new Date().toISOString().slice(0,10);
     const nueva={id:uid(),createdAt:new Date().toISOString(),status:'pending_supervisor',
@@ -925,7 +1021,7 @@ function doSubmit(){
     S.reqs=[...S.reqs,nueva];sg("ci_reqs_abr26",S.reqs);
     encolarUpsert(nueva);
     S.okMsg='Excepción enviada al supervisor.';
-    S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''};
+    S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',adsTipo:'',adsPct:'',fechaInicio:''};
     S.vRes=null;S.fErr={};S.exc=false;S.excRazon='';S.tab='mis';
     render();
     setTimeout(()=>{S.okMsg='';render();},3000);
@@ -933,6 +1029,7 @@ function doSubmit(){
   }
 
   // CASO NORMAL — validar si aún no se validó, o reusar S.vRes
+  {const _ea=_errAds(S.form);if(Object.keys(_ea).length){S.fErr=Object.assign({},S.fErr,_ea);render();return;}}
   if(!S.vRes){
     // Primera vez sin haber pulsado "Validar" antes
     const vr=validate(req,[...HISTORICO,...S.reqs]);
@@ -951,7 +1048,7 @@ function doSubmit(){
   S.reqs=[...S.reqs,nueva];sg("ci_reqs_abr26",S.reqs);
   encolarUpsert(nueva);
   S.okMsg='Solicitud enviada. Pendiente de aprobación.';
-  S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',fechaInicio:''};
+  S.form={pais:'',brandId:'',palanca:'',tipoGestion:'',porcentaje:'',semanas:'',montoCampana:'',adsTipo:'',adsPct:'',fechaInicio:''};
   S.vRes=null;S.fErr={};S.tab='mis';
   render();
   setTimeout(()=>{S.okMsg='';render();},3000);
@@ -1160,7 +1257,7 @@ function buildSupervisor(){
 
         // Info del farmer
         const bhmeta=h('div',{style:{display:'flex',gap:16,flexWrap:'wrap'}});
-        [['👤',( r.farmer||'').replace('@rappi.com','')],['🌎',r.pais],['📅',fDsol(r)],['💵',fN(r.montoCampana)],['📊',r.palanca==='free_trial'?'Free Trial '+r.semanas+'s':r.porcentaje+'% desc.']].forEach(function(it){
+        [['👤',( r.farmer||'').replace('@rappi.com','')],['🌎',r.pais],['📅',fDsol(r)],['💵',fN(r.montoCampana)],['📊',r.palanca==='free_trial'?'Free Trial '+r.semanas+'s':r.porcentaje+'% desc.']].concat(r.adsTipo?[['📢',adsLabel(r)]]:[]).forEach(function(it){
           const m=h('div',{style:{fontSize:12,color:'#4B5563'}});
           m.appendChild(h('span',{},it[0]+' '));
           m.appendChild(h('span',{style:{fontWeight:600}},it[1]));
@@ -1177,6 +1274,7 @@ function buildSupervisor(){
         // Motivo — busca todos los campos posibles del Sheet
         var _razon=r.excepcionRazon||r.excRazon||r.exc_razon||r.excepcion_razon||r.razon||r.motivo||r.reason||'';
         const body=h('div',{style:{padding:'16px 20px'}});
+        {const _av=buildReglasAviso(r);if(_av)body.appendChild(_av);}
         if(_razon){
           const motivo=h('div',{style:{background:'#FFFBEB',border:'1px solid #FDE68A',borderRadius:10,padding:'12px 16px',marginBottom:16}});
           motivo.appendChild(h('div',{style:{fontSize:11,fontWeight:700,color:'#92400E',marginBottom:4,textTransform:'uppercase',letterSpacing:'0.05em'}},'💬 Motivo de la excepción'));
@@ -1823,9 +1921,10 @@ function buildAdmin(){
           var det=h('div',{style:{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:'4px 14px',fontSize:13,color:'#4B5563',marginBottom:8}});
           ['🌎 '+r.pais,'👤 '+r.farmer,'👔 '+(r.lider||''),'📅 '+fDsol(r),
            '🎯 '+(r.palanca==='free_trial'?'Free Trial '+r.semanas+' sem.':r.porcentaje+'% desc.'),
-           '💵 '+fN(r.montoCampana),'📤 Rappi: '+fN(ci),'📊 '+pctB+'% budget']
+           '💵 '+fN(r.montoCampana),'📤 Rappi: '+fN(ci),'📊 '+pctB+'% budget'].concat(r.adsTipo?['📢 '+adsLabel(r)]:[])
           .forEach(function(t){det.appendChild(h('span',{},t));});
           info.appendChild(det);
+          var _avA=buildReglasAviso(r);if(_avA)info.appendChild(_avA);
           // Reject input
           if(S.rejectId===r.id){
             var rj=h('div',{style:{display:'flex',gap:8,marginTop:8}});
